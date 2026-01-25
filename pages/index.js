@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase'; // ここを修正しました
 import { Camera, MessageCircle, Heart, Share2, Plus, User } from 'lucide-react';
 
 export default function Home() {
@@ -11,8 +11,20 @@ export default function Home() {
 
   useEffect(() => {
     // ログイン状態のチェック
-    const session = supabase.auth.getSession();
-    setUser(session?.user ?? null);
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUser(session.user);
+        // プロフィール情報の取得
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', session.user.id)
+          .single();
+        if (profile) setUsername(profile.username);
+      }
+    };
+    checkUser();
     fetchData();
   }, []);
 
@@ -30,17 +42,14 @@ export default function Home() {
     if (storiesData) setStories(storiesData);
   }
 
-  // 簡易サインアップ（本来はAuthを通すべきですが、まずは動かすためにプロフィールの作成）
   async function handleSignUp() {
     if (!username) return;
-    // テスト用に匿名ログイン的な動きをさせる（本来はEmail認証などが必要）
     const { data, error } = await supabase.auth.signInAnonymously();
-    if (data.user) {
-      await supabase.from('profiles').insert([
+    if (data?.user) {
+      await supabase.from('profiles').upsert([
         { id: data.user.id, username: username, display_name: username }
       ]);
       setUser(data.user);
-      window.location.reload();
     }
   }
 
@@ -56,7 +65,6 @@ export default function Home() {
     }
   }
 
-  // ログインしていない時の画面
   if (!user) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-gray-50">
@@ -65,7 +73,7 @@ export default function Home() {
           <p className="text-gray-600 mb-4 text-center">ユーザー名を入力して開始</p>
           <input 
             type="text" 
-            className="w-full border border-gray-200 p-3 rounded-xl mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full border border-gray-200 p-3 rounded-xl mb-4 focus:ring-2 focus:ring-blue-500 outline-none text-black"
             placeholder="ユーザー名（例: taro_grid）"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -82,7 +90,7 @@ export default function Home() {
   }
 
   return (
-    <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans">
+    <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans text-black">
       <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex justify-between items-center">
         <h1 className="text-xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">GridStream</h1>
         <div className="flex gap-4 text-gray-700">
@@ -113,12 +121,12 @@ export default function Home() {
 
       {/* 投稿入力 */}
       <div className="p-4 border-b border-gray-100 flex gap-3">
-        <div className="w-10 h-10 rounded-full bg-blue-100 overflow-hidden flex-shrink-0 flex items-center justify-center text-blue-500 font-bold">
-          {username[0]?.toUpperCase() || <User size={20}/>}
+        <div className="w-10 h-10 rounded-full bg-blue-100 overflow-hidden flex-shrink-0 flex items-center justify-center text-blue-500 font-bold uppercase">
+          {username ? username[0] : <User size={20}/>}
         </div>
         <div className="flex-grow">
           <textarea 
-            className="w-full border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-12"
+            className="w-full border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-12 outline-none"
             placeholder="今、何してる？"
             value={newPost}
             onChange={(e) => setNewPost(e.target.value)}
@@ -154,11 +162,11 @@ export default function Home() {
 
       {/* ナビゲーション */}
       <nav className="fixed bottom-0 max-w-md w-full bg-white/90 backdrop-blur-md border-t border-gray-100 flex justify-around py-3 text-gray-400">
-        <span className="text-blue-500">🏠</span>
-        <span>🔍</span>
-        <span>✉️</span>
-        <span>👤</span>
+        <span className="text-blue-500 cursor-pointer">🏠</span>
+        <span className="cursor-pointer">🔍</span>
+        <span className="cursor-pointer">✉️</span>
+        <span className="cursor-pointer">👤</span>
       </nav>
     </div>
   );
-    }
+          }
