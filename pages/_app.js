@@ -1,7 +1,10 @@
+// pages/_app.js
 import '../styles/globals.css'
 
-function MyApp({ Component, pageProps }) {
-  return <Component {...pageProps} />
+export default function MyApp({ Component, pageProps }) {
+  return (
+    <div className="tailwind-apply"> 
+      <Component {...pageProps} />
+    </div>
+  )
 }
-
-export default MyApp
