@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Plus, User, Search, Home as HomeIcon, X, Send } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User } from 'lucide-react';
 
 export default function App() {
   const [view, setView] = useState('home'); 
@@ -11,6 +11,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [username, setUsername] = useState('');
   const [selectedPost, setSelectedPost] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     checkUser();
@@ -27,20 +28,37 @@ export default function App() {
   }
 
   async function fetchData() {
-    const { data: postsData } = await supabase
+    setLoading(true);
+    console.log("データ取得を開始します...");
+
+    // 1. 投稿の取得（プロフィールを結合）
+    const { data: postsData, error: postsError } = await supabase
       .from('posts')
       .select('*, profiles(username, avatar_url)')
       .order('created_at', { ascending: false });
-    if (postsData) setPosts(postsData);
 
-    const { data: profData } = await supabase.from('profiles').select('*');
-    if (profData) setAllProfiles(profData);
+    if (postsError) {
+      console.error("投稿取得エラー:", postsError.message);
+    } else {
+      console.log("取得された投稿:", postsData);
+      setPosts(postsData || []);
+    }
+
+    // 2. ユーザー一覧の取得
+    const { data: profData, error: profError } = await supabase.from('profiles').select('*');
+    if (profError) {
+      console.error("プロフィール取得エラー:", profError.message);
+    } else {
+      setAllProfiles(profData || []);
+    }
+    
+    setLoading(false);
   }
 
   async function handlePost(imageUrl = null) {
     if (!newPost.trim() || !user) return;
     
-    // 投稿前にプロフィールが存在するか最終確認
+    // プロフィールがなければ作成
     const { data: profile } = await supabase.from('profiles').select('id').eq('id', user.id).single();
     if (!profile) {
       await supabase.from('profiles').upsert([{ id: user.id, username: username || 'Guest' }]);
@@ -53,15 +71,14 @@ export default function App() {
     }]);
 
     if (error) {
-      console.error(error);
-      alert("エラーが発生しました。SQLを実行したか確認してください。");
+      console.error("投稿失敗:", error.message);
+      alert("投稿エラー: " + error.message);
     } else {
       setNewPost('');
-      fetchData();
+      fetchData(); // 投稿後に再読込
     }
   }
 
-  // オムニ検索のフィルタリング
   const filteredPosts = posts.filter(p => p.content?.toLowerCase().includes(searchQuery.toLowerCase()));
   const filteredUsers = allProfiles.filter(u => u.username?.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -71,7 +88,7 @@ export default function App() {
     <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans text-black relative">
       <script src="https://cdn.tailwindcss.com"></script>
 
-      {/* --- ホーム画面 (Twitter形式) --- */}
+      {/* --- ホーム画面 --- */}
       {view === 'home' && (
         <div className="animate-in fade-in">
           <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex justify-between items-center">
@@ -84,43 +101,46 @@ export default function App() {
             <div className="flex-grow">
               <textarea className="w-full border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent" placeholder="今、何してる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
               <div className="flex justify-end gap-2">
-                <button onClick={() => handlePost(`https://picsum.photos/seed/${Date.now()}/600/600`)} className="bg-gray-50 text-gray-500 px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1 active:bg-gray-200">📷 画像付き</button>
-                <button onClick={() => handlePost()} className="bg-indigo-600 text-white px-5 py-2 rounded-full font-bold text-sm shadow-lg shadow-indigo-100">ポスト</button>
+                <button onClick={() => handlePost(`https://picsum.photos/seed/${Date.now()}/600/600`)} className="bg-gray-50 text-gray-500 px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1">📷 画像付き</button>
+                <button onClick={() => handlePost()} className="bg-indigo-600 text-white px-5 py-2 rounded-full font-bold text-sm shadow-md">ポスト</button>
               </div>
             </div>
           </div>
 
           <div className="divide-y divide-gray-100">
-            {posts.map((post) => (
-              <article key={post.id} className="p-4 flex gap-3 hover:bg-gray-50 transition">
-                <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username || 'user'}`} />
-                </div>
-                <div className="flex-grow">
-                  <div className="flex items-center gap-1"><span className="font-bold text-sm">{post.profiles?.username || '読み込み中...'}</span><span className="text-gray-400 text-xs">· なう</span></div>
-                  <p className="text-sm mt-1 leading-relaxed">{post.content}</p>
-                  {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl border border-gray-100 max-h-80 w-full object-cover" />}
-                  <div className="flex justify-between mt-3 text-gray-400 max-w-[200px]"><Heart size={18} /><MessageCircle size={18} /><Share2 size={18} /></div>
-                </div>
-              </article>
-            ))}
+            {loading ? (
+              <div className="p-10 text-center text-gray-400">読み込み中...</div>
+            ) : posts.length === 0 ? (
+              <div className="p-10 text-center text-gray-400">投稿がありません。<br/>右下のコンソールを確認してください。</div>
+            ) : (
+              posts.map((post) => (
+                <article key={post.id} className="p-4 flex gap-3 hover:bg-gray-50 transition">
+                  <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username || 'Guest'}`} />
+                  </div>
+                  <div className="flex-grow">
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-sm">{post.profiles?.username || 'Unknown User'}</span>
+                      <span className="text-gray-400 text-xs">· なう</span>
+                    </div>
+                    <p className="text-sm mt-1 leading-relaxed">{post.content}</p>
+                    {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl border border-gray-100 max-h-80 w-full object-cover" />}
+                    <div className="flex justify-between mt-3 text-gray-400 max-w-[200px]"><Heart size={18} /><MessageCircle size={18} /><Share2 size={18} /></div>
+                  </div>
+                </article>
+              ))
+            )}
           </div>
         </div>
       )}
 
-      {/* --- 検索画面 (オムニ検索 ＋ グリッド) --- */}
+      {/* --- 検索画面 (オムニ検索) --- */}
       {view === 'search' && (
         <div className="animate-in fade-in">
           <div className="p-4 sticky top-0 bg-white z-10 border-b border-gray-50">
             <div className="relative">
               <Search className="absolute left-3 top-3 text-gray-400" size={20} />
-              <input 
-                type="text" 
-                placeholder="ユーザー、キーワードを検索" 
-                className="w-full bg-gray-100 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:ring-2 focus:ring-indigo-200"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+              <input type="text" placeholder="ユーザー、キーワードを検索" className="w-full bg-gray-100 rounded-xl py-2.5 pl-10 pr-4 outline-none" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
           </div>
 
@@ -135,7 +155,7 @@ export default function App() {
           ) : (
             <div className="p-4 space-y-6">
               <div>
-                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase">ユーザー</h3>
+                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest">ユーザー</h3>
                 {filteredUsers.map(u => (
                   <div key={u.id} className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden"><img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} /></div>
@@ -144,9 +164,9 @@ export default function App() {
                 ))}
               </div>
               <div>
-                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase">つぶやき</h3>
+                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest">つぶやき</h3>
                 {filteredPosts.map(p => (
-                  <div key={p.id} className="py-3 border-b border-gray-50 text-sm" onClick={() => p.image_url && setSelectedPost(p)}>
+                  <div key={p.id} className="py-3 border-b border-gray-50 text-sm">
                     <p className="font-bold text-xs text-indigo-500">@{p.profiles?.username}</p>
                     <p className="text-gray-800">{p.content}</p>
                   </div>
@@ -185,7 +205,7 @@ export default function App() {
 function LoginScreen({ username, setUsername, setUser, fetchData }) {
   const handleSignUp = async () => {
     if (!username.trim()) return;
-    const { data, error } = await supabase.auth.signInAnonymously();
+    const { data } = await supabase.auth.signInAnonymously();
     if (data?.user) {
       await supabase.from('profiles').upsert([{ id: data.user.id, username, display_name: username }]);
       setUser(data.user);
@@ -193,11 +213,10 @@ function LoginScreen({ username, setUsername, setUser, fetchData }) {
     }
   };
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-gray-50 text-black">
-      <script src="https://cdn.tailwindcss.com"></script>
-      <h1 className="text-4xl font-extrabold mb-8 text-indigo-600 italic">Beta</h1>
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-gray-50">
+      <h1 className="text-4xl font-extrabold mb-8 text-indigo-600 italic tracking-tighter">Beta</h1>
       <div className="w-full max-w-sm bg-white p-8 rounded-3xl border border-gray-100 shadow-xl text-center">
-        <input type="text" className="w-full border p-4 rounded-2xl mb-4 outline-none" placeholder="ユーザー名" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <input type="text" className="w-full border p-4 rounded-2xl mb-4 outline-none focus:ring-2 focus:ring-indigo-100" placeholder="ユーザー名" value={username} onChange={(e) => setUsername(e.target.value)} />
         <button onClick={handleSignUp} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl">新しく始める</button>
       </div>
     </div>
