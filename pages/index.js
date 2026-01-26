@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, Check, AtSign, Zap, LogOut, Mail, Lock, UserPlus, UserMinus, MoreHorizontal } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, Check, AtSign, Zap, LogOut, Mail, Lock, MoreHorizontal } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -59,6 +59,27 @@ export default function App() {
     if (profData) setAllProfiles(profData);
   }
 
+  // --- 投稿処理 ---
+  async function handlePost(e) {
+    e.preventDefault();
+    if (!newPost.trim() || !user) return;
+    setUploading(true);
+    let imageUrl = null;
+    if (fileInputRef.current?.files[0]) {
+      const formData = new FormData();
+      formData.append('file', fileInputRef.current.files[0]);
+      formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: 'POST', body: formData });
+      const data = await res.json();
+      imageUrl = data.secure_url;
+    }
+    await supabase.from('posts').insert([{ content: newPost, user_id: user.id, image_url: imageUrl }]);
+    setNewPost('');
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    fetchData();
+    setUploading(false);
+  }
+
   const openProfile = async (userId) => {
     setActiveProfileId(userId);
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
@@ -94,12 +115,10 @@ export default function App() {
 
   const getAvatar = (name, url) => url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`;
 
-  // 未ログイン時はAuthScreenを表示
   if (!user) return <AuthScreen fetchData={fetchData} />;
 
   return (
     <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans text-black relative shadow-2xl overflow-x-hidden">
-      {/* Tailwind CDNを確実に配置 */}
       <script src="https://cdn.tailwindcss.com"></script>
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} />}
@@ -114,6 +133,24 @@ export default function App() {
             </h1>
             <MessageCircle size={24} className="text-gray-700 cursor-pointer" onClick={() => setView('messages')} />
           </header>
+
+          {/* 復活したつぶやきフォーム */}
+          <form onSubmit={handlePost} className="p-4 border-b border-gray-100 bg-white">
+            <div className="flex gap-3">
+              <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-10 h-10 rounded-full shadow-sm object-cover" onClick={() => openProfile(user.id)} />
+              <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent" placeholder="今、何を考えてる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
+            </div>
+            <div className="flex justify-between items-center pl-12 mt-2">
+              <label className="cursor-pointer text-blue-500 hover:bg-blue-50 p-2 rounded-full transition">
+                <ImageIcon size={22}/>
+                <input type="file" accept="image/*" ref={fileInputRef} className="hidden" />
+              </label>
+              <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs shadow-lg shadow-blue-100 uppercase tracking-tighter disabled:opacity-50">
+                {uploading ? '...' : 'Stream'}
+              </button>
+            </div>
+          </form>
+
           <div className="divide-y divide-gray-100">
             {posts.map(post => <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} />)}
           </div>
@@ -148,7 +185,7 @@ export default function App() {
                 <h2 className="text-2xl font-black tracking-tighter">{profileInfo.display_name}</h2>
                 <p className="text-gray-400 text-sm font-bold">@{profileInfo.username}</p>
               </div>
-              <p className="text-[15px] font-medium leading-relaxed">{profileInfo.bio || 'GridStream Explorer 🚀'}</p>
+              <p className="text-[15px] font-medium leading-relaxed">{profileInfo.bio || 'GridStream member.'}</p>
               <div className="flex gap-6 pt-1">
                 <button onClick={() => setShowFollowList('following')} className="hover:opacity-60 transition flex gap-1.5 items-center">
                   <span className="font-black text-lg">{stats.following}</span><span className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Following</span>
@@ -175,14 +212,11 @@ export default function App() {
         </div>
       )}
 
-      {/* --- SEARCH VIEW --- */}
+      {/* --- SEARCH / MESSAGES --- */}
       {view === 'search' && <SearchView posts={posts} openProfile={openProfile} searchQuery={searchQuery} setSearchQuery={setSearchQuery} setSelectedPost={setSelectedPost} />}
-      
-      {/* --- MESSAGES VIEW --- */}
       {view === 'messages' && <MessagesList allProfiles={allProfiles} user={user} setDmTarget={setDmTarget} getAvatar={getAvatar} openProfile={openProfile} />}
 
-      {/* Bottom Nav */}
-      <nav className="fixed bottom-0 max-w-md w-full bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-4 text-gray-300 z-40 shadow-[0_-5px_20px_rgba(0,0,0,0.02)]">
+      <nav className="fixed bottom-0 max-w-md w-full bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-4 text-gray-300 z-40 shadow-sm">
         <HomeIcon onClick={() => setView('home')} className={`cursor-pointer ${view === 'home' ? 'text-blue-600' : ''}`} />
         <Search onClick={() => setView('search')} className={`cursor-pointer ${view === 'search' ? 'text-black' : ''}`} />
         <MessageCircle onClick={() => setView('messages')} className={`cursor-pointer ${view === 'messages' ? 'text-black' : ''}`} />
@@ -193,6 +227,23 @@ export default function App() {
 }
 
 // --- サブコンポーネント ---
+
+function PostCard({ post, openProfile, getAvatar }) {
+  return (
+    <article className="p-4 flex gap-3 hover:bg-gray-50 transition">
+      <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer flex-shrink-0 object-cover shadow-sm" onClick={() => openProfile(post.profiles.id)} />
+      <div className="flex-grow min-w-0">
+        <div className="flex items-center gap-1 cursor-pointer" onClick={() => openProfile(post.profiles.id)}>
+          <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
+          <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
+        </div>
+        <p className="text-sm mt-1 text-gray-800 font-medium leading-relaxed">{post.content}</p>
+        {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100 shadow-sm" />}
+        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px]"><Heart size={18}/><MessageCircle size={18}/><Share2 size={18}/></div>
+      </div>
+    </article>
+  );
+}
 
 function FollowListModal({ type, userId, onClose, openProfile, getAvatar }) {
   const [list, setList] = useState([]);
@@ -220,7 +271,6 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar }) {
                 <p className="font-black text-sm">{u.display_name}</p>
                 <p className="text-gray-400 text-xs font-bold">@{u.username}</p>
               </div>
-              <ChevronLeft className="rotate-180 text-gray-200" size={16}/>
             </div>
           ))}
           {list.length === 0 && <p className="text-center text-gray-400 py-20 font-bold italic">Nothing to show yet.</p>}
@@ -230,30 +280,13 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar }) {
   );
 }
 
-function PostCard({ post, openProfile, getAvatar }) {
-  return (
-    <article className="p-4 flex gap-3 hover:bg-gray-50 transition">
-      <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer flex-shrink-0 object-cover" onClick={() => openProfile(post.profiles.id)} />
-      <div className="flex-grow min-w-0">
-        <div className="flex items-center gap-1 cursor-pointer" onClick={() => openProfile(post.profiles.id)}>
-          <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
-          <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
-        </div>
-        <p className="text-sm mt-1 text-gray-800 font-medium leading-relaxed">{post.content}</p>
-        {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100 shadow-sm" />}
-        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px]"><Heart size={18}/><MessageCircle size={18}/><Share2 size={18}/></div>
-      </div>
-    </article>
-  );
-}
-
 function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelectedPost }) {
   return (
     <div className="animate-in fade-in">
       <div className="p-4 sticky top-0 bg-white/95 z-10 border-b border-gray-100">
         <div className="relative">
           <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-          <input type="text" placeholder="DISCOVER IN STREAM" className="w-full bg-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-bold" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          <input type="text" placeholder="DISCOVER" className="w-full bg-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-bold" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
       </div>
       <div className="grid grid-cols-3 gap-[2px]">
@@ -372,4 +405,4 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar }) {
       </form>
     </div>
   );
-              }
+            }
