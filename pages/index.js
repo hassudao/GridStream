@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User, RefreshCw } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User, RefreshCcw, AlertCircle } from 'lucide-react';
 
 export default function App() {
   const [view, setView] = useState('home'); 
@@ -12,6 +12,7 @@ export default function App() {
   const [username, setUsername] = useState('');
   const [selectedPost, setSelectedPost] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [debugInfo, setDebugInfo] = useState(''); // デバッグ用
 
   useEffect(() => {
     checkUser();
@@ -29,14 +30,18 @@ export default function App() {
 
   async function fetchData() {
     setLoading(true);
-    // profilesを結合して取得。結合できない場合（null）も想定
+    // 修正ポイント：left join（プロフィールがなくても投稿を取得）を明示
     const { data: postsData, error } = await supabase
       .from('posts')
-      .select('*, profiles(username, avatar_url)')
+      .select('*, profiles:user_id(username, avatar_url)')
       .order('created_at', { ascending: false });
 
-    if (error) console.error("Fetch Error:", error);
-    setPosts(postsData || []);
+    if (error) {
+      setDebugInfo(error.message);
+    } else {
+      setPosts(postsData || []);
+      setDebugInfo(`取得件数: ${postsData?.length || 0}件`);
+    }
 
     const { data: profData } = await supabase.from('profiles').select('*');
     setAllProfiles(profData || []);
@@ -46,7 +51,7 @@ export default function App() {
   async function handlePost(imageUrl = null) {
     if (!newPost.trim() || !user) return;
     
-    // アカウント機能の強化：投稿前にプロフィールが確実に存在するかチェック＆作成
+    // アカウント作成を確実にする
     await supabase.from('profiles').upsert([{ id: user.id, username: username || 'User' }]);
 
     const { error } = await supabase.from('posts').insert([{ 
@@ -59,7 +64,7 @@ export default function App() {
       setNewPost('');
       fetchData();
     } else {
-      alert("投稿失敗: " + error.message);
+      alert("投稿エラー: " + error.message);
     }
   }
 
@@ -75,32 +80,31 @@ export default function App() {
       {/* --- ホーム --- */}
       {view === 'home' && (
         <div className="animate-in fade-in">
-          <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex justify-between items-center">
-            <h1 className="text-2xl font-black bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent italic tracking-tighter">GridStream</h1>
-            <div className="flex gap-4">
-              <RefreshCw size={20} className={`text-gray-400 ${loading && 'animate-spin'}`} onClick={fetchData} />
+          <header className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-gray-100 p-4 flex justify-between items-center">
+            <h1 className="text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent italic tracking-tighter">GridStream</h1>
+            <div className="flex gap-4 text-gray-400">
+              <RefreshCcw size={20} className={loading ? 'animate-spin' : ''} onClick={fetchData} />
               <MessageCircle size={24} className="text-gray-700" />
             </div>
           </header>
+
+          {/* デバッグ用バナー（不要になったら消してください） */}
+          <div className="bg-gray-50 p-2 text-[10px] text-gray-400 flex items-center justify-center gap-2">
+            <AlertCircle size={10}/> {debugInfo}
+          </div>
           
           <div className="p-4 border-b border-gray-100 flex gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">{username ? username[0] : 'U'}</div>
+            <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 font-bold border border-blue-100 uppercase">{username ? username[0] : 'U'}</div>
             <div className="flex-grow">
-              <textarea className="w-full border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent" placeholder="今、何してる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
+              <textarea className="w-full border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent" placeholder="GridStreamに投稿..." value={newPost} onChange={(e) => setNewPost(e.target.value)} />
               <div className="flex justify-end gap-2">
-                <button onClick={() => handlePost(`https://picsum.photos/seed/${Date.now()}/600/600`)} className="bg-gray-50 text-gray-500 px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1 active:bg-gray-200">📷 画像付き</button>
-                <button onClick={() => handlePost()} className="bg-blue-600 text-white px-5 py-2 rounded-full font-bold text-sm shadow-lg shadow-blue-100">ポスト</button>
+                <button onClick={() => handlePost(`https://picsum.photos/seed/${Date.now()}/600/600`)} className="bg-gray-50 text-gray-500 px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1 active:scale-95 transition">📷 画像付き</button>
+                <button onClick={() => handlePost()} className="bg-blue-600 text-white px-5 py-2 rounded-full font-bold text-sm shadow-lg shadow-blue-100 active:scale-95 transition">ポスト</button>
               </div>
             </div>
           </div>
 
           <div className="divide-y divide-gray-100">
-            {posts.length === 0 && !loading && (
-              <div className="p-10 text-center">
-                <p className="text-gray-400 text-sm">投稿が見つかりません</p>
-                <button onClick={fetchData} className="mt-2 text-blue-500 text-xs font-bold underline">再読み込み</button>
-              </div>
-            )}
             {posts.map((post) => (
               <article key={post.id} className="p-4 flex gap-3 hover:bg-gray-50/50 transition animate-in slide-in-from-bottom-2">
                 <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
@@ -112,7 +116,7 @@ export default function App() {
                     <span className="text-gray-400 text-[10px]">· Just now</span>
                   </div>
                   <p className="text-sm mt-1 leading-relaxed text-gray-800">{post.content}</p>
-                  {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl border border-gray-100 max-h-80 w-full object-cover" />}
+                  {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl border border-gray-100 max-h-80 w-full object-cover shadow-sm" />}
                   <div className="flex justify-between mt-3 text-gray-400 max-w-[200px]"><Heart size={18} /><MessageCircle size={18} /><Share2 size={18} /></div>
                 </div>
               </article>
@@ -127,14 +131,14 @@ export default function App() {
           <div className="p-4 sticky top-0 bg-white z-10 border-b border-gray-50">
             <div className="relative">
               <Search className="absolute left-3 top-3 text-gray-400" size={20} />
-              <input type="text" placeholder="ユーザー、つぶやきを検索" className="w-full bg-gray-100 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:ring-2 focus:ring-blue-200 text-black bg-white" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              <input type="text" placeholder="ユーザー、つぶやきを検索" className="w-full bg-gray-100 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:ring-2 focus:ring-blue-100 text-black bg-white" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
           </div>
 
           {searchQuery === '' ? (
             <div className="grid grid-cols-3 gap-[2px]">
               {posts.filter(p => p.image_url).map((post) => (
-                <div key={post.id} className="aspect-square bg-gray-100 overflow-hidden" onClick={() => setSelectedPost(post)}>
+                <div key={post.id} className="aspect-square bg-gray-100 overflow-hidden cursor-pointer" onClick={() => setSelectedPost(post)}>
                   <img src={post.image_url} className="w-full h-full object-cover" />
                 </div>
               ))}
@@ -145,7 +149,7 @@ export default function App() {
                 <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest">ユーザー</h3>
                 {filteredUsers.map(u => (
                   <div key={u.id} className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden"><img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} /></div>
+                    <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden font-black"><img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} /></div>
                     <span className="font-bold text-sm">{u.username}</span>
                   </div>
                 ))}
@@ -153,7 +157,7 @@ export default function App() {
               <div>
                 <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest">つぶやき</h3>
                 {filteredPosts.map(p => (
-                  <div key={p.id} className="py-3 border-b border-gray-50 text-sm" onClick={() => p.image_url && setSelectedPost(p)}>
+                  <div key={p.id} className="py-3 border-b border-gray-50 text-sm">
                     <p className="font-bold text-xs text-blue-500">@{p.profiles?.username || '名無し'}</p>
                     <p className="text-gray-800">{p.content}</p>
                   </div>
@@ -167,7 +171,7 @@ export default function App() {
       {/* --- ポップアップ --- */}
       {selectedPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedPost(null)}>
-          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <img src={selectedPost.image_url} className="w-full aspect-square object-cover" />
             <div className="p-5">
               <p className="font-bold text-sm mb-1">{selectedPost.profiles?.username || '名無し'}</p>
@@ -177,7 +181,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ナビ */}
+      {/* 下部ナビゲーション */}
       <nav className="fixed bottom-0 max-w-md w-full bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-4 text-gray-400 z-20">
         <HomeIcon onClick={() => setView('home')} className={view === 'home' ? 'text-blue-600' : ''} />
         <Search onClick={() => setView('search')} className={view === 'search' ? 'text-black font-bold' : ''} />
@@ -193,7 +197,7 @@ function LoginScreen({ username, setUsername, setUser, fetchData }) {
     if (!username.trim()) return;
     const { data } = await supabase.auth.signInAnonymously();
     if (data?.user) {
-      // ログイン時にプロフィールを確実に保存
+      // ユーザー作成と同時にプロフィールを強制作成
       await supabase.from('profiles').upsert([{ id: data.user.id, username, display_name: username }]);
       setUser(data.user);
       fetchData();
@@ -204,9 +208,9 @@ function LoginScreen({ username, setUsername, setUser, fetchData }) {
       <script src="https://cdn.tailwindcss.com"></script>
       <h1 className="text-4xl font-black mb-8 text-blue-600 italic tracking-tighter">GridStream</h1>
       <div className="w-full max-w-sm bg-white p-8 rounded-3xl border border-gray-100 shadow-xl text-center">
-        <input type="text" className="w-full border p-4 rounded-2xl mb-4 outline-none focus:ring-2 focus:ring-blue-100 text-black bg-white" placeholder="ユーザー名を入力" value={username} onChange={(e) => setUsername(e.target.value)} />
-        <button onClick={handleSignUp} className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg">GridStreamを始める</button>
+        <input type="text" className="w-full border p-4 rounded-2xl mb-4 outline-none focus:ring-2 focus:ring-blue-100 text-black bg-white" placeholder="ユーザー名" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <button onClick={handleSignUp} className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg">GridStreamを開始</button>
       </div>
     </div>
   );
-              }
+    }
