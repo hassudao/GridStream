@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, RefreshCw, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, MoreHorizontal, Check, AtSign } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, RefreshCw, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, MoreHorizontal, Check, AtSign, Zap } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -59,7 +59,7 @@ export default function App() {
     setUploading(true);
     const updates = {
       id: user.id,
-      username: username.replace(/\s+/g, '').toLowerCase(), // IDはスペース無し小文字に強制
+      username: username.replace(/\s+/g, '').toLowerCase(), 
       display_name: displayName,
       bio: profileData.bio,
       header_url: profileData.header_url,
@@ -121,14 +121,16 @@ export default function App() {
       {view === 'home' && (
         <div className="animate-in fade-in">
           <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-50 p-4 flex justify-between items-center">
-            <h1 className="text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent italic tracking-tighter uppercase">Beta</h1>
+            <h1 className="text-2xl font-black bg-gradient-to-r from-blue-700 via-indigo-600 to-cyan-500 bg-clip-text text-transparent italic tracking-tighter uppercase flex items-center gap-1">
+              <Zap size={24} className="text-blue-600 fill-blue-600" /> GridStream
+            </h1>
             <MessageCircle size={24} className="text-gray-700 cursor-pointer" onClick={() => setView('messages')} />
           </header>
           
           <div className="flex overflow-x-auto p-4 gap-4 no-scrollbar border-b border-gray-50 bg-white">
             {allProfiles.map((u) => (
               <div key={u.id} className="flex flex-col items-center flex-shrink-0 gap-1 cursor-pointer" onClick={() => setDmTarget(u)}>
-                <div className="w-16 h-16 rounded-full border-2 border-pink-500 p-0.5 shadow-sm">
+                <div className="w-16 h-16 rounded-full border-2 border-cyan-500 p-0.5 shadow-sm">
                   <img src={getAvatar(u.username, u.avatar_url)} className="w-full h-full rounded-full bg-gray-50 object-cover" />
                 </div>
                 <span className="text-[10px] text-gray-500 truncate w-16 text-center">{u.display_name || u.username}</span>
@@ -139,11 +141,11 @@ export default function App() {
           <form onSubmit={handlePost} className="p-4 border-b border-gray-100 bg-white">
             <div className="flex gap-3">
               <img src={getAvatar(username, profileData.avatar_url)} className="w-10 h-10 rounded-full shadow-sm" />
-              <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent" placeholder="今、何してる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
+              <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent" placeholder="今、何を考えてる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
             </div>
             <div className="flex justify-between items-center pl-12 mt-2">
               <label className="cursor-pointer text-blue-500 hover:bg-blue-50 p-2 rounded-full transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
-              <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs shadow-lg">{uploading ? '...' : 'POST'}</button>
+              <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs shadow-lg shadow-blue-100">{uploading ? '...' : 'STREAM'}</button>
             </div>
           </form>
 
@@ -156,7 +158,7 @@ export default function App() {
       {/* --- PROFILE VIEW --- */}
       {view === 'profile' && (
         <div className="animate-in fade-in pb-10">
-          <div className={`h-32 relative shadow-inner overflow-hidden ${!profileData.header_url && 'bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-700'}`}>
+          <div className={`h-32 relative shadow-inner overflow-hidden ${!profileData.header_url && 'bg-gradient-to-br from-blue-700 via-indigo-600 to-cyan-500'}`}>
             {profileData.header_url && <img src={profileData.header_url} className="w-full h-full object-cover" />}
             {isEditing && (
               <label className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer">
@@ -249,7 +251,7 @@ export default function App() {
       {view === 'search' && <SearchView posts={posts} searchQuery={searchQuery} setSearchQuery={setSearchQuery} setSelectedPost={setSelectedPost} />}
       {view === 'messages' && <MessagesList allProfiles={allProfiles} user={user} setDmTarget={setDmTarget} getAvatar={getAvatar} />}
 
-      {/* ポップアップ */}
+      {/* 詳細ポップアップ */}
       {selectedPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" onClick={() => setSelectedPost(null)}>
           <div className="bg-white w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
@@ -270,6 +272,7 @@ export default function App() {
         </div>
       )}
 
+      {/* Bottom Nav */}
       <nav className="fixed bottom-0 max-w-md w-full bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-4 text-gray-300 z-40">
         <HomeIcon onClick={() => {setView('home'); setIsEditing(false);}} className={view === 'home' ? 'text-blue-600 scale-110' : ''} />
         <Search onClick={() => {setView('search'); setIsEditing(false);}} className={view === 'search' ? 'text-black scale-110' : ''} />
@@ -304,7 +307,7 @@ function SearchView({ posts, searchQuery, setSearchQuery, setSelectedPost }) {
       <div className="p-4 sticky top-0 bg-white/95 z-10 border-b border-gray-100">
         <div className="relative">
           <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-          <input type="text" placeholder="DISCOVER" className="w-full bg-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-bold" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          <input type="text" placeholder="DISCOVER IN STREAM" className="w-full bg-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-bold" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
       </div>
       <div className="grid grid-cols-3 gap-[2px]">
@@ -321,14 +324,14 @@ function SearchView({ posts, searchQuery, setSearchQuery, setSelectedPost }) {
 function MessagesList({ allProfiles, user, setDmTarget, getAvatar }) {
   return (
     <div className="animate-in fade-in">
-      <header className="p-4 border-b border-gray-100 font-black text-lg text-center tracking-tighter uppercase sticky top-0 bg-white/95 z-10">Messages</header>
+      <header className="p-4 border-b border-gray-100 font-black text-lg text-center tracking-tighter uppercase sticky top-0 bg-white/95 z-10">Stream Chat</header>
       <div className="p-2">
         {allProfiles.filter(p => p.id !== user.id).map(u => (
           <div key={u.id} className="flex items-center gap-4 p-4 hover:bg-gray-50 rounded-2xl cursor-pointer transition" onClick={() => setDmTarget(u)}>
             <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full bg-gray-100 shadow-sm" />
             <div className="flex-grow border-b border-gray-50 pb-2">
               <p className="font-bold text-sm">{u.display_name || u.username} <span className="text-gray-400 font-bold text-xs">@{u.username}</span></p>
-              <p className="text-xs text-blue-500 font-medium italic mt-1 uppercase tracking-tighter">Tap to Chat</p>
+              <p className="text-xs text-blue-500 font-medium italic mt-1 uppercase tracking-tighter">Start Conversation</p>
             </div>
           </div>
         ))}
@@ -410,10 +413,13 @@ function LoginScreen({ setUsername, setDisplayName, setUser, fetchData }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-center">
       <script src="https://cdn.tailwindcss.com"></script>
-      <div className="w-24 h-24 bg-gradient-to-tr from-blue-600 to-indigo-700 rounded-[2.5rem] flex items-center justify-center shadow-2xl mb-8 rotate-6 animate-pulse"><Grid size={48} color="white" /></div>
-      <h1 className="text-6xl font-black mb-4 text-blue-600 italic tracking-tighter uppercase">Beta</h1>
+      <div className="w-24 h-24 bg-gradient-to-tr from-blue-700 via-indigo-600 to-cyan-500 rounded-[2.5rem] flex items-center justify-center shadow-2xl mb-8 rotate-6 animate-pulse">
+        <Zap size={48} color="white" fill="white" />
+      </div>
+      <h1 className="text-5xl font-black mb-2 text-blue-700 italic tracking-tighter uppercase">GridStream</h1>
+      <p className="text-gray-400 text-xs font-bold uppercase tracking-[0.2em] mb-10">Beyond the Grid</p>
       <input type="text" className="w-full max-w-xs bg-gray-50 p-6 rounded-2xl mb-4 outline-none text-lg font-black text-center shadow-inner" placeholder="DISPLAY NAME" value={name} onChange={(e) => setName(e.target.value)} />
-      <button onClick={handleSignUp} className="w-full max-w-xs bg-blue-600 text-white font-black py-6 rounded-2xl shadow-2xl hover:bg-blue-700 active:scale-95 uppercase tracking-widest text-sm">Create Account</button>
+      <button onClick={handleSignUp} className="w-full max-w-xs bg-blue-700 text-white font-black py-6 rounded-2xl shadow-2xl hover:bg-blue-800 active:scale-95 uppercase tracking-widest text-sm transition-all">Join the Stream</button>
     </div>
   );
-}
+  }
