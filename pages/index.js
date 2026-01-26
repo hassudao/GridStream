@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, RefreshCw, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, MoreHorizontal, Check, AtSign, Zap } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, RefreshCw, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, MoreHorizontal, Check, AtSign, Zap, LogOut, Mail, Lock } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -13,9 +13,8 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState(null);
   
-  // ユーザー情報のステート
-  const [username, setUsername] = useState(''); // @ID
-  const [displayName, setDisplayName] = useState(''); // 表示名
+  const [username, setUsername] = useState(''); 
+  const [displayName, setDisplayName] = useState(''); 
   const [profileData, setProfileData] = useState({ bio: '', header_url: '', avatar_url: '' });
   
   const [selectedPost, setSelectedPost] = useState(null);
@@ -28,22 +27,36 @@ export default function App() {
   useEffect(() => {
     checkUser();
     fetchData();
+
+    // ログイン状態の変化を監視
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        loadUserProfile(session.user.id);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   async function checkUser() {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       setUser(session.user);
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-      if (profile) {
-        setUsername(profile.username);
-        setDisplayName(profile.display_name || profile.username);
-        setProfileData({
-          bio: profile.bio || '',
-          header_url: profile.header_url || '',
-          avatar_url: profile.avatar_url || ''
-        });
-      }
+      loadUserProfile(session.user.id);
+    }
+  }
+
+  async function loadUserProfile(userId) {
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (profile) {
+      setUsername(profile.username);
+      setDisplayName(profile.display_name || profile.username);
+      setProfileData({
+        bio: profile.bio || '',
+        header_url: profile.header_url || '',
+        avatar_url: profile.avatar_url || ''
+      });
     }
   }
 
@@ -54,8 +67,18 @@ export default function App() {
     if (profData) setAllProfiles(profData);
   }
 
+  // ログアウト処理
+  async function handleLogout() {
+    if (confirm("Logout from GridStream?")) {
+      await supabase.auth.signOut();
+      setUser(null);
+      setView('home');
+    }
+  }
+
+  // --- プロフィール更新 ---
   async function handleUpdateProfile() {
-    if (!username.trim() || !displayName.trim()) return alert("Username and Display Name are required");
+    if (!username.trim() || !displayName.trim()) return alert("Required fields missing");
     setUploading(true);
     const updates = {
       id: user.id,
@@ -66,9 +89,8 @@ export default function App() {
       avatar_url: profileData.avatar_url,
       updated_at: new Date(),
     };
-
     const { error } = await supabase.from('profiles').upsert(updates);
-    if (error) alert("Error: " + error.message);
+    if (error) alert(error.message);
     else { setIsEditing(false); fetchData(); }
     setUploading(false);
   }
@@ -109,7 +131,7 @@ export default function App() {
 
   const getAvatar = (name, url) => url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`;
 
-  if (!user) return <LoginScreen setUsername={setUsername} setDisplayName={setDisplayName} setUser={setUser} fetchData={fetchData} />;
+  if (!user) return <AuthScreen fetchData={fetchData} />;
 
   return (
     <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans text-black relative shadow-2xl overflow-x-hidden">
@@ -145,7 +167,7 @@ export default function App() {
             </div>
             <div className="flex justify-between items-center pl-12 mt-2">
               <label className="cursor-pointer text-blue-500 hover:bg-blue-50 p-2 rounded-full transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
-              <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs shadow-lg shadow-blue-100">{uploading ? '...' : 'STREAM'}</button>
+              <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs shadow-lg shadow-blue-100 uppercase tracking-tighter">Stream</button>
             </div>
           </form>
 
@@ -166,6 +188,9 @@ export default function App() {
                 <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadToCloudinary(e.target.files[0], 'header')} />
               </label>
             )}
+            <button onClick={handleLogout} className="absolute top-4 right-4 bg-white/20 backdrop-blur-md p-2 rounded-full text-white hover:bg-red-500 transition shadow-lg">
+              <LogOut size={20} />
+            </button>
           </div>
           
           <div className="px-4 relative">
@@ -194,7 +219,7 @@ export default function App() {
 
             <div className="mt-2 space-y-3">
               {isEditing ? (
-                <div className="space-y-3 pt-2">
+                <div className="space-y-3 pt-2 animate-in slide-in-from-top duration-300">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-gray-400 uppercase ml-2">Display Name</label>
                     <input className="w-full bg-gray-50 p-3 rounded-xl text-sm font-black border border-gray-100 outline-none focus:ring-2 focus:ring-blue-100" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
@@ -265,7 +290,7 @@ export default function App() {
              <img src={selectedPost.image_url} className="w-full aspect-square object-cover" />
              <div className="p-5">
                <div className="flex gap-4 mb-4"><Heart size={24} /><MessageCircle size={24} /><Send size={24} /></div>
-               <p className="text-sm"><span className="font-black mr-1">{selectedPost.profiles?.display_name}</span><span className="text-gray-400 text-[10px] mr-2">@{selectedPost.profiles?.username}</span></p>
+               <p className="text-sm font-bold text-blue-600">{selectedPost.profiles?.display_name}</p>
                <p className="text-sm mt-1">{selectedPost.content}</p>
              </div>
           </div>
@@ -283,6 +308,70 @@ export default function App() {
   );
 }
 
+// サブコンポーネント
+function AuthScreen({ fetchData }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLogin, setIsLogin] = useState(true);
+  const [displayName, setDisplayName] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleAuth(e) {
+    e.preventDefault();
+    setLoading(true);
+    if (isLogin) {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) alert(error.message);
+    } else {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) alert(error.message);
+      else if (data?.user) {
+        const initialId = displayName.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 1000);
+        await supabase.from('profiles').upsert([{ id: data.user.id, username: initialId, display_name: displayName }]);
+        alert("Account created! Welcome to GridStream.");
+      }
+    }
+    setLoading(false);
+    fetchData();
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white">
+      <script src="https://cdn.tailwindcss.com"></script>
+      <div className="w-20 h-20 bg-gradient-to-tr from-blue-700 via-indigo-600 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-bounce">
+        <Zap size={40} color="white" fill="white" />
+      </div>
+      <h1 className="text-4xl font-black mb-2 text-blue-700 italic tracking-tighter uppercase">GridStream</h1>
+      <p className="text-gray-400 text-[10px] font-bold uppercase tracking-[0.3em] mb-10">Authentication</p>
+      
+      <form onSubmit={handleAuth} className="w-full max-w-xs space-y-4 animate-in fade-in zoom-in-95 duration-500">
+        {!isLogin && (
+          <div className="relative">
+            <UserIcon className="absolute left-4 top-4 text-gray-400" size={18} />
+            <input type="text" placeholder="DISPLAY NAME" className="w-full bg-gray-50 p-4 pl-12 rounded-2xl outline-none font-bold text-sm shadow-inner" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
+          </div>
+        )}
+        <div className="relative">
+          <Mail className="absolute left-4 top-4 text-gray-400" size={18} />
+          <input type="email" placeholder="EMAIL ADDRESS" className="w-full bg-gray-50 p-4 pl-12 rounded-2xl outline-none font-bold text-sm shadow-inner" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
+        <div className="relative">
+          <Lock className="absolute left-4 top-4 text-gray-400" size={18} />
+          <input type="password" placeholder="PASSWORD" className="w-full bg-gray-50 p-4 pl-12 rounded-2xl outline-none font-bold text-sm shadow-inner" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </div>
+        <button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-blue-800 active:scale-95 transition-all text-sm uppercase tracking-widest">
+          {loading ? 'Processing...' : (isLogin ? 'Login' : 'Join Stream')}
+        </button>
+      </form>
+      
+      <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest hover:text-blue-600 transition">
+        {isLogin ? "Need an account? Sign Up" : "Already have an account? Login"}
+      </button>
+    </div>
+  );
+}
+
+// 共通パーツ
 function PostCard({ post, setDmTarget, getAvatar }) {
   return (
     <article className="p-4 flex gap-3 hover:bg-gray-50 transition duration-200">
@@ -291,7 +380,6 @@ function PostCard({ post, setDmTarget, getAvatar }) {
         <div className="flex items-center gap-1 overflow-hidden">
           <span className="font-black text-sm truncate">{post.profiles?.display_name || post.profiles?.username}</span>
           <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
-          <span className="text-gray-300 text-[11px] font-bold">· {new Date(post.created_at).toLocaleDateString()}</span>
         </div>
         <p className="text-sm mt-1 text-gray-800 font-medium leading-relaxed">{post.content}</p>
         {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl border border-gray-100 max-h-96 w-full object-cover shadow-sm" />}
@@ -359,8 +447,10 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar }) {
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   async function fetchMessages() {
-    const { data } = await supabase.from('messages').select('*').or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${currentUser.id})`).order('created_at', { ascending: true });
-    if (data) setMessages(data);
+    const { data } = await supabase.from('profiles').select('id').eq('id', target.id).single();
+    if (!data) return;
+    const { data: msgs } = await supabase.from('messages').select('*').or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${currentUser.id})`).order('created_at', { ascending: true });
+    if (msgs) setMessages(msgs);
   }
 
   async function sendMsg(e) {
@@ -388,38 +478,10 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar }) {
         ))}
         <div ref={scrollRef} />
       </div>
-      <form onSubmit={sendMsg} className="p-4 bg-white border-t border-gray-50 flex gap-2">
+      <form onSubmit={sendMsg} className="p-4 bg-white border-t border-gray-100 flex gap-2">
         <input type="text" className="flex-grow bg-gray-50 p-4 rounded-2xl text-sm outline-none border border-gray-100" placeholder="メッセージを入力..." value={text} onChange={(e) => setText(e.target.value)} />
         <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-90 transition"><Send size={18}/></button>
       </form>
     </div>
   );
-}
-
-function LoginScreen({ setUsername, setDisplayName, setUser, fetchData }) {
-  const [name, setName] = useState('');
-  const handleSignUp = async () => {
-    if (!name.trim()) return;
-    const { data } = await supabase.auth.signInAnonymously();
-    if (data?.user) {
-      const initialId = name.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 1000);
-      await supabase.from('profiles').upsert([{ id: data.user.id, username: initialId, display_name: name }]);
-      setUser(data.user);
-      setUsername(initialId);
-      setDisplayName(name);
-      fetchData();
-    }
-  };
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-center">
-      <script src="https://cdn.tailwindcss.com"></script>
-      <div className="w-24 h-24 bg-gradient-to-tr from-blue-700 via-indigo-600 to-cyan-500 rounded-[2.5rem] flex items-center justify-center shadow-2xl mb-8 rotate-6 animate-pulse">
-        <Zap size={48} color="white" fill="white" />
-      </div>
-      <h1 className="text-5xl font-black mb-2 text-blue-700 italic tracking-tighter uppercase">GridStream</h1>
-      <p className="text-gray-400 text-xs font-bold uppercase tracking-[0.2em] mb-10">Beyond the Grid</p>
-      <input type="text" className="w-full max-w-xs bg-gray-50 p-6 rounded-2xl mb-4 outline-none text-lg font-black text-center shadow-inner" placeholder="DISPLAY NAME" value={name} onChange={(e) => setName(e.target.value)} />
-      <button onClick={handleSignUp} className="w-full max-w-xs bg-blue-700 text-white font-black py-6 rounded-2xl shadow-2xl hover:bg-blue-800 active:scale-95 uppercase tracking-widest text-sm transition-all">Join the Stream</button>
-    </div>
-  );
-  }
+        }
