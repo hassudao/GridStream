@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, RefreshCw, Grid, List, Plus, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, RefreshCw, Grid, List, Plus, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, MoreHorizontal } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -58,19 +58,21 @@ export default function App() {
         const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, { method: 'POST', body: formData });
         const data = await res.json();
         imageUrl = data.secure_url;
-      } catch (err) { console.error("Upload failed", err); }
+      } catch (err) { alert("Upload failed"); }
     }
-    await supabase.from('posts').insert([{ content: newPost, user_id: user.id, image_url: imageUrl }]);
-    setNewPost('');
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    fetchData();
+    const { error } = await supabase.from('posts').insert([{ content: newPost, user_id: user.id, image_url: imageUrl }]);
+    if (!error) {
+      setNewPost('');
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      fetchData();
+    }
     setUploading(false);
   }
 
   if (!user) return <LoginScreen setUsername={setUsername} setUser={setUser} fetchData={fetchData} />;
 
   return (
-    <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans text-black relative shadow-2xl">
+    <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans text-black relative shadow-2xl overflow-x-hidden">
       <script src="https://cdn.tailwindcss.com"></script>
 
       {/* --- DMモーダル --- */}
@@ -81,26 +83,31 @@ export default function App() {
         <div className="animate-in fade-in duration-500">
           <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-50 p-4 flex justify-between items-center">
             <h1 className="text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent italic tracking-tighter uppercase">GridStream</h1>
-            <MessageCircle size={24} className="text-gray-700 cursor-pointer" onClick={() => setView('messages')} />
+            <div className="flex gap-4">
+              <MessageCircle size={24} className="text-gray-700 cursor-pointer" onClick={() => setView('messages')} />
+            </div>
           </header>
 
+          {/* ストーリーバー */}
           <div className="flex overflow-x-auto p-4 gap-4 no-scrollbar border-b border-gray-50 bg-white">
             {allProfiles.map((u) => (
               <div key={u.id} className="flex flex-col items-center flex-shrink-0 gap-1 cursor-pointer" onClick={() => setDmTarget(u)}>
-                <div className="w-14 h-14 rounded-full border-2 border-pink-500 p-0.5"><img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} className="w-full h-full rounded-full bg-gray-50" /></div>
-                <span className="text-[10px] text-gray-500 truncate w-14 text-center">{u.username}</span>
+                <div className="w-16 h-16 rounded-full border-2 border-pink-500 p-0.5 shadow-sm">
+                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} className="w-full h-full rounded-full bg-gray-50 object-cover" />
+                </div>
+                <span className="text-[10px] text-gray-500 truncate w-16 text-center">{u.username}</span>
               </div>
             ))}
           </div>
 
           <form onSubmit={handlePost} className="p-4 border-b border-gray-100 bg-white">
             <div className="flex gap-3">
-              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`} className="w-10 h-10 rounded-full" />
-              <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none" placeholder="今、何してる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
+              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`} className="w-10 h-10 rounded-full bg-gray-100" />
+              <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent" placeholder="今、何してる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
             </div>
             <div className="flex justify-between items-center pl-12 mt-2">
-              <label className="cursor-pointer text-blue-500 p-2 rounded-full hover:bg-blue-50 transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
-              <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs shadow-lg">{uploading ? '...' : 'POST'}</button>
+              <label className="cursor-pointer text-blue-500 hover:bg-blue-50 p-2 rounded-full transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
+              <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs shadow-lg shadow-blue-100">{uploading ? '...' : 'POST'}</button>
             </div>
           </form>
 
@@ -110,15 +117,13 @@ export default function App() {
         </div>
       )}
 
-      {/* --- SEARCH VIEW --- */}
+      {/* --- SEARCH VIEW (Discover) --- */}
       {view === 'search' && (
         <div className="animate-in fade-in">
           <div className="p-4 sticky top-0 bg-white/95 backdrop-blur-md z-10 border-b border-gray-100">
-            <div className="relative flex items-center gap-2">
-               <div className="relative flex-grow">
-                 <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-                 <input type="text" placeholder="DISCOVER" className="w-full bg-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none text-sm" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-               </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 text-gray-400" size={18} />
+              <input type="text" placeholder="DISCOVER" className="w-full bg-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-bold" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-3 gap-[2px]">
@@ -134,100 +139,163 @@ export default function App() {
       {/* --- MESSAGES VIEW --- */}
       {view === 'messages' && (
         <div className="animate-in fade-in">
-          <header className="p-4 border-b border-gray-100 font-black text-lg text-center uppercase tracking-tighter">Messages</header>
-          {allProfiles.filter(p => p.id !== user.id).map(u => (
-            <div key={u.id} className="flex items-center gap-4 p-4 hover:bg-gray-50 cursor-pointer" onClick={() => setDmTarget(u)}>
-              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} className="w-12 h-12 rounded-full" />
-              <div>
-                <p className="font-bold text-sm">{u.username}</p>
-                <p className="text-xs text-blue-500 font-medium italic">タップしてチャット</p>
+          <header className="p-4 border-b border-gray-100 font-black text-lg text-center tracking-tighter uppercase sticky top-0 bg-white/95 z-10">Messages</header>
+          <div className="p-2">
+            {allProfiles.filter(p => p.id !== user.id).map(u => (
+              <div key={u.id} className="flex items-center gap-4 p-4 hover:bg-gray-50 rounded-2xl cursor-pointer transition" onClick={() => setDmTarget(u)}>
+                <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} className="w-14 h-14 rounded-full bg-gray-100 shadow-sm" />
+                <div className="flex-grow border-b border-gray-50 pb-2">
+                  <p className="font-bold text-sm tracking-tight">{u.username}</p>
+                  <p className="text-xs text-blue-500 font-medium mt-1 italic">タップしてチャット</p>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
-      {/* --- PROFILE VIEW (Hybrid) --- */}
+      {/* --- PROFILE VIEW (Twitter x Instagram Hybrid) --- */}
       {view === 'profile' && (
         <div className="animate-in fade-in duration-500">
-          <div className="h-32 bg-gradient-to-r from-blue-400 to-indigo-500 relative">
+          {/* ヘッダー */}
+          <div className="h-32 bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-700 relative shadow-inner">
             {profileData?.header_url && <img src={profileData.header_url} className="w-full h-full object-cover" />}
+            <div className="absolute inset-0 bg-black/10"></div>
           </div>
-          <div className="px-4 relative pb-4">
+          
+          <div className="px-4 relative">
+            {/* アイコン */}
             <div className="absolute -top-12 left-4">
-              <div className="w-24 h-24 rounded-full border-4 border-white bg-white overflow-hidden shadow-lg">
-                <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`} className="w-full h-full" />
+              <div className="w-24 h-24 rounded-full border-4 border-white bg-white overflow-hidden shadow-2xl">
+                <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`} className="w-full h-full object-cover" />
               </div>
             </div>
+            
             <div className="flex justify-end py-3">
-              <button className="border border-gray-300 rounded-full px-4 py-1.5 text-sm font-bold hover:bg-gray-50 transition">編集</button>
+              <button className="border border-gray-200 rounded-full px-5 py-1.5 text-sm font-black hover:bg-gray-50 transition tracking-tight">EDIT PROFILE</button>
             </div>
-            <div className="mt-2">
-              <h2 className="text-xl font-black tracking-tight">{username}</h2>
-              <p className="text-gray-500 text-sm">@{username.toLowerCase()}</p>
-              <p className="mt-3 text-[15px]">GridStream Alpha Developer / SNS Innovator 🚀</p>
-              <div className="flex gap-4 mt-3 text-gray-500 text-xs font-bold uppercase tracking-widest">
-                <span className="flex items-center gap-1"><MapPin size={12}/> Tokyo</span>
-                <span className="flex items-center gap-1"><Calendar size={12}/> Joined 2026</span>
+
+            <div className="mt-2 space-y-3">
+              <div>
+                <h2 className="text-2xl font-black tracking-tighter">{username}</h2>
+                <p className="text-gray-500 text-sm font-medium tracking-tight">@{username.toLowerCase()}</p>
+              </div>
+              
+              <p className="text-[15px] leading-relaxed font-medium">GridStream Alpha Developer / Exploring the Next SNS Interface 🚀</p>
+              
+              <div className="flex flex-wrap gap-y-1 gap-x-4 text-gray-500 text-[13px] font-bold">
+                <span className="flex items-center gap-1"><MapPin size={14}/> Nishio, Japan</span>
+                <span className="flex items-center gap-1"><Calendar size={14}/> Joined January 2026</span>
+              </div>
+              
+              <div className="flex gap-5 pt-1">
+                <p className="text-sm font-bold">152 <span className="text-gray-400 font-medium">Following</span></p>
+                <p className="text-sm font-bold">842 <span className="text-gray-400 font-medium">Followers</span></p>
               </div>
             </div>
           </div>
-          <div className="flex border-b border-gray-100 mt-2">
-            <button onClick={() => setProfileTab('grid')} className={`flex-grow py-3 flex justify-center ${profileTab === 'grid' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400'}`}><Grid size={22}/></button>
-            <button onClick={() => setProfileTab('list')} className={`flex-grow py-3 flex justify-center ${profileTab === 'list' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400'}`}><List size={22}/></button>
+
+          {/* 切り替えタブ */}
+          <div className="flex border-b border-gray-100 mt-6 sticky top-0 bg-white/95 z-10">
+            <button onClick={() => setProfileTab('grid')} className={`flex-grow py-4 flex justify-center transition-all ${profileTab === 'grid' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-300'}`}>
+              <Grid size={22} className={profileTab === 'grid' ? 'scale-110' : ''}/>
+            </button>
+            <button onClick={() => setProfileTab('list')} className={`flex-grow py-4 flex justify-center transition-all ${profileTab === 'list' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-300'}`}>
+              <List size={22} className={profileTab === 'list' ? 'scale-110' : ''}/>
+            </button>
           </div>
+
+          {/* プロフィールコンテンツ */}
           {profileTab === 'grid' ? (
-            <div className="grid grid-cols-3 gap-[2px]">
+            <div className="grid grid-cols-3 gap-[2px] animate-in fade-in duration-300">
               {posts.filter(p => p.user_id === user.id && p.image_url).map(post => (
-                <div key={post.id} className="aspect-square bg-gray-100 cursor-pointer overflow-hidden" onClick={() => setSelectedPost(post)}>
-                  <img src={post.image_url} className="w-full h-full object-cover" />
+                <div key={post.id} className="aspect-square bg-gray-50 cursor-pointer overflow-hidden relative group" onClick={() => setSelectedPost(post)}>
+                  <img src={post.image_url} className="w-full h-full object-cover transition group-hover:brightness-75" />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white">
+                    <Heart size={16} fill="white"/> <span className="ml-1 font-bold text-xs">24</span>
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-gray-100 animate-in fade-in duration-300">
               {posts.filter(p => p.user_id === user.id).map(post => <PostCard key={post.id} post={post} />)}
             </div>
           )}
         </div>
       )}
 
+      {/* --- ポップアップ詳細 (Instagram風) --- */}
       {selectedPost && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm" onClick={() => setSelectedPost(null)}>
-          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
-             <img src={selectedPost.image_url} className="w-full aspect-square object-cover" />
-             <div className="p-4"><p className="text-sm font-bold">{selectedPost.profiles?.username} <span className="font-normal ml-2">{selectedPost.content}</span></p></div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in zoom-in-95" onClick={() => setSelectedPost(null)}>
+          <div className="bg-white w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
+             <div className="p-4 border-b border-gray-50 flex items-center justify-between bg-white">
+                <div className="flex items-center gap-2">
+                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedPost.profiles?.username}`} className="w-8 h-8 rounded-full border border-gray-100" />
+                  <span className="font-black text-xs">{selectedPost.profiles?.username}</span>
+                </div>
+                <X size={20} className="text-gray-400 cursor-pointer" onClick={() => setSelectedPost(null)} />
+             </div>
+             <div className="relative aspect-square bg-gray-100">
+               <img src={selectedPost.image_url} className="w-full h-full object-cover" />
+             </div>
+             <div className="p-5 bg-white">
+               <div className="flex gap-4 mb-4 text-gray-800">
+                 <Heart size={24} className="hover:text-pink-500 cursor-pointer transition" />
+                 <MessageCircle size={24} className="hover:text-blue-500 cursor-pointer transition" />
+                 <Send size={24} className="hover:text-green-500 cursor-pointer transition" />
+               </div>
+               <p className="text-sm leading-relaxed text-gray-800">
+                 <span className="font-black mr-2 tracking-tighter">{selectedPost.profiles?.username}</span>
+                 {selectedPost.content}
+               </p>
+               <p className="text-[10px] text-gray-400 font-bold uppercase mt-3 tracking-widest">{new Date(selectedPost.created_at).toLocaleDateString()}</p>
+             </div>
           </div>
         </div>
       )}
 
-      {/* --- BOTTOM NAV --- */}
-      <nav className="fixed bottom-0 max-w-md w-full bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-4 text-gray-400 z-40">
-        <HomeIcon onClick={() => setView('home')} className={view === 'home' ? 'text-blue-600' : ''} />
-        <Search onClick={() => setView('search')} className={view === 'search' ? 'text-black' : ''} />
-        <MessageCircle onClick={() => setView('messages')} className={view === 'messages' ? 'text-black' : ''} />
-        <UserIcon onClick={() => setView('profile')} className={view === 'profile' ? 'text-black' : ''} />
+      {/* 下部ナビゲーション */}
+      <nav className="fixed bottom-0 max-w-md w-full bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-4 text-gray-300 z-40">
+        <HomeIcon onClick={() => setView('home')} className={view === 'home' ? 'text-blue-600 scale-110' : 'hover:text-gray-600 cursor-pointer'} />
+        <Search onClick={() => setView('search')} className={view === 'search' ? 'text-black scale-110' : 'hover:text-gray-600 cursor-pointer'} />
+        <MessageCircle onClick={() => setView('messages')} className={view === 'messages' ? 'text-black scale-110' : 'hover:text-gray-600 cursor-pointer'} />
+        <UserIcon onClick={() => setView('profile')} className={view === 'profile' ? 'text-black scale-110' : 'hover:text-gray-600 cursor-pointer'} />
       </nav>
     </div>
   );
 }
 
-// --- SUB COMPONENTS ---
-
+// 共通ポストカードコンポーネント
 function PostCard({ post, setDmTarget }) {
   return (
-    <article className="p-4 flex gap-3 animate-in slide-in-from-bottom-2">
-      <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username}`} className="w-10 h-10 rounded-full flex-shrink-0 cursor-pointer" onClick={() => setDmTarget && setDmTarget(post.profiles)} />
+    <article className="p-4 flex gap-3 hover:bg-gray-50/30 transition duration-300">
+      <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username}`} className="w-11 h-11 rounded-full flex-shrink-0 cursor-pointer border border-gray-50 shadow-sm" onClick={() => setDmTarget && setDmTarget(post.profiles)} />
       <div className="flex-grow">
-        <div className="flex items-center gap-1 font-bold text-sm">{post.profiles?.username}</div>
-        <p className="text-sm mt-1 text-gray-800 leading-relaxed whitespace-pre-wrap">{post.content}</p>
-        {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl border border-gray-100 max-h-80 w-full object-cover" />}
-        <div className="flex gap-6 mt-4 text-gray-400"><Heart size={18}/><MessageCircle size={18}/><Share2 size={18}/></div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <span className="font-black text-sm tracking-tight">{post.profiles?.username}</span>
+            <span className="text-gray-400 text-[10px] font-bold uppercase tracking-tighter">· {new Date(post.created_at).toLocaleDateString()}</span>
+          </div>
+          <MoreHorizontal size={14} className="text-gray-300" />
+        </div>
+        <p className="text-sm mt-1 text-gray-800 leading-relaxed whitespace-pre-wrap font-medium">{post.content}</p>
+        {post.image_url && (
+          <div className="mt-3 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
+            <img src={post.image_url} className="w-full h-auto max-h-96 object-cover" loading="lazy" />
+          </div>
+        )}
+        <div className="flex justify-between mt-4 text-gray-400 max-w-[240px]">
+          <div className="flex items-center gap-1.5 hover:text-pink-500 cursor-pointer transition"><Heart size={18} /><span className="text-[11px] font-bold">12</span></div>
+          <div className="flex items-center gap-1.5 hover:text-blue-500 cursor-pointer transition"><MessageCircle size={18} /><span className="text-[11px] font-bold">4</span></div>
+          <Share2 size={18} className="hover:text-green-500 cursor-pointer transition" />
+        </div>
       </div>
     </article>
   );
 }
 
+// DMチャット画面
 function DMScreen({ target, setDmTarget, currentUser }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
@@ -262,45 +330,53 @@ function DMScreen({ target, setDmTarget, currentUser }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#f0f2f5] flex flex-col animate-in slide-in-from-bottom duration-300">
-      <header className="bg-white p-4 flex items-center gap-3 border-b border-gray-100 shadow-sm">
+    <div className="fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col animate-in slide-in-from-right duration-300">
+      <header className="bg-white p-4 flex items-center gap-3 border-b border-gray-100 shadow-sm sticky top-0">
         <ChevronLeft className="cursor-pointer" onClick={() => setDmTarget(null)} />
-        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${target.username}`} className="w-10 h-10 rounded-full bg-gray-100 shadow-sm" />
-        <span className="font-bold text-sm tracking-tight">{target.username}</span>
+        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${target.username}`} className="w-10 h-10 rounded-full border border-gray-50 shadow-sm" />
+        <div className="flex flex-col"><span className="font-black text-sm tracking-tight leading-none">{target.username}</span><span className="text-[10px] text-green-500 font-bold uppercase mt-1">Online</span></div>
       </header>
       <div className="flex-grow overflow-y-auto p-4 space-y-4">
         {messages.map(m => (
           <div key={m.id} className={`flex ${m.sender_id === currentUser.id ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[75%] p-3 rounded-2xl text-sm shadow-sm ${m.sender_id === currentUser.id ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'}`}>{m.text}</div>
+            <div className={`max-w-[80%] p-3.5 rounded-[1.25rem] text-[14px] leading-relaxed shadow-sm ${m.sender_id === currentUser.id ? 'bg-blue-600 text-white rounded-tr-none shadow-blue-100' : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'}`}>{m.text}</div>
           </div>
         ))}
         <div ref={scrollRef} />
       </div>
-      <form onSubmit={sendMsg} className="p-4 bg-white border-t border-gray-100 flex gap-2">
-        <input type="text" className="flex-grow bg-gray-100 p-4 rounded-full text-sm outline-none" placeholder="メッセージを入力..." value={text} onChange={(e) => setText(e.target.value)} />
-        <button type="submit" className="bg-blue-600 text-white p-4 rounded-full shadow-lg active:scale-90 transition"><Send size={18}/></button>
+      <form onSubmit={sendMsg} className="p-4 bg-white border-t border-gray-50 flex gap-2">
+        <input type="text" className="flex-grow bg-gray-50 p-4 rounded-2xl text-sm outline-none shadow-inner border border-gray-100 focus:bg-white transition" placeholder="メッセージを入力..." value={text} onChange={(e) => setText(e.target.value)} />
+        <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-90 transition"><Send size={18}/></button>
       </form>
     </div>
   );
 }
 
+// ログイン画面
 function LoginScreen({ setUsername, setUser, fetchData }) {
-  const [input, setInput] = useState('');
+  const [name, setName] = useState('');
   const handleSignUp = async () => {
-    if (!input.trim()) return;
+    if (!name.trim()) return;
     const { data } = await supabase.auth.signInAnonymously();
     if (data?.user) {
-      await supabase.from('profiles').upsert([{ id: data.user.id, username: input, display_name: input }]);
+      await supabase.from('profiles').upsert([{ id: data.user.id, username: name, display_name: name }]);
       setUser(data.user);
-      setUsername(input);
+      setUsername(name);
       fetchData();
     }
   };
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-white text-black text-center">
-      <h1 className="text-5xl font-black mb-12 text-blue-600 italic tracking-tighter uppercase">GridStream</h1>
-      <input type="text" className="w-full max-w-xs bg-gray-50 p-5 rounded-2xl mb-4 outline-none text-lg font-bold shadow-inner" placeholder="USERNAME" value={input} onChange={(e) => setInput(e.target.value)} />
-      <button onClick={handleSignUp} className="w-full max-w-xs bg-blue-600 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-blue-700 transition active:scale-95">ENTER ALPHA</button>
+    <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black text-center animate-in zoom-in-95">
+      <script src="https://cdn.tailwindcss.com"></script>
+      <div className="w-24 h-24 bg-gradient-to-tr from-blue-600 to-indigo-700 rounded-[2.5rem] flex items-center justify-center shadow-2xl mb-8 rotate-6 animate-pulse">
+        <Grid size={48} color="white" />
+      </div>
+      <h1 className="text-6xl font-black mb-4 text-blue-600 italic tracking-tighter uppercase">Beta</h1>
+      <p className="text-gray-400 font-bold text-xs uppercase tracking-[0.4em] mb-16 italic">The GridStream Dimension</p>
+      <div className="w-full max-w-xs space-y-4">
+        <input type="text" className="w-full bg-gray-50 border-none p-6 rounded-2xl outline-none text-lg font-black shadow-inner focus:ring-2 focus:ring-blue-100 transition text-center" placeholder="CHOOSE USERNAME" value={name} onChange={(e) => setName(e.target.value)} />
+        <button onClick={handleSignUp} className="w-full bg-blue-600 text-white font-black py-6 rounded-2xl shadow-2xl shadow-blue-100 hover:bg-blue-700 transition active:scale-95 uppercase tracking-widest text-sm">Enter the Grid</button>
+      </div>
     </div>
   );
-  }
+              }
