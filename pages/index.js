@@ -12,7 +12,7 @@ export default function App() {
   const [newPost, setNewPost] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState(null);
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(''); // ログイン中のユーザー名
   const [profileData, setProfileData] = useState({ bio: '', header_url: '' });
   const [selectedPost, setSelectedPost] = useState(null);
   const [profileTab, setProfileTab] = useState('grid'); 
@@ -20,7 +20,6 @@ export default function App() {
   const [isEditing, setIsEditing] = useState(false);
   const [dmTarget, setDmTarget] = useState(null); 
   const fileInputRef = useRef(null);
-  const headerInputRef = useRef(null);
 
   useEffect(() => {
     checkUser();
@@ -49,21 +48,27 @@ export default function App() {
     if (profData) setAllProfiles(profData);
   }
 
-  // --- プロフィール更新処理 ---
+  // --- 【修正ポイント】プロフィール更新処理 ---
   async function handleUpdateProfile() {
     setUploading(true);
     const updates = {
       id: user.id,
+      username: username, // ここにusernameを含めることでNot-Null制約エラーを回避
       bio: profileData.bio,
       header_url: profileData.header_url,
       updated_at: new Date(),
     };
 
     const { error } = await supabase.from('profiles').upsert(updates);
-    if (error) alert(error.message);
-    setIsEditing(false);
+    
+    if (error) {
+      console.error(error);
+      alert("Error updating profile: " + error.message);
+    } else {
+      setIsEditing(false);
+      fetchData();
+    }
     setUploading(false);
-    fetchData();
   }
 
   // --- ヘッダー画像のアップロード ---
@@ -86,6 +91,7 @@ export default function App() {
     setUploading(false);
   }
 
+  // --- 投稿処理 ---
   async function handlePost(e) {
     e.preventDefault();
     if (!newPost.trim() || !user) return;
@@ -113,6 +119,7 @@ export default function App() {
     <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans text-black relative shadow-2xl overflow-x-hidden">
       <script src="https://cdn.tailwindcss.com"></script>
 
+      {/* --- DMモーダル --- */}
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} />}
 
       {/* --- HOME VIEW --- */}
@@ -122,6 +129,8 @@ export default function App() {
             <h1 className="text-2xl font-black bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent italic tracking-tighter uppercase">Beta</h1>
             <MessageCircle size={24} className="text-gray-700 cursor-pointer" onClick={() => setView('messages')} />
           </header>
+          
+          {/* ストーリーバー (プロフィール一覧) */}
           <div className="flex overflow-x-auto p-4 gap-4 no-scrollbar border-b border-gray-50 bg-white">
             {allProfiles.map((u) => (
               <div key={u.id} className="flex flex-col items-center flex-shrink-0 gap-1 cursor-pointer" onClick={() => setDmTarget(u)}>
@@ -132,6 +141,7 @@ export default function App() {
               </div>
             ))}
           </div>
+
           <form onSubmit={handlePost} className="p-4 border-b border-gray-100 bg-white">
             <div className="flex gap-3">
               <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`} className="w-10 h-10 rounded-full bg-gray-100 shadow-sm" />
@@ -142,6 +152,7 @@ export default function App() {
               <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs shadow-lg">{uploading ? '...' : 'POST'}</button>
             </div>
           </form>
+
           <div className="divide-y divide-gray-100">
             {posts.map(post => <PostCard key={post.id} post={post} setDmTarget={setDmTarget} />)}
           </div>
@@ -185,10 +196,9 @@ export default function App() {
         </div>
       )}
 
-      {/* --- PROFILE VIEW (Edit Mode Integrated) --- */}
+      {/* --- PROFILE VIEW --- */}
       {view === 'profile' && (
         <div className="animate-in fade-in duration-500 pb-10">
-          {/* ヘッダー */}
           <div className={`h-32 relative shadow-inner overflow-hidden ${!profileData.header_url && 'bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-700'}`}>
             {profileData.header_url && <img src={profileData.header_url} className="w-full h-full object-cover" />}
             {isEditing && (
@@ -210,11 +220,11 @@ export default function App() {
             <div className="flex justify-end py-3 gap-2">
               {isEditing ? (
                 <>
-                  <button onClick={() => setIsEditing(false)} className="border border-gray-200 rounded-full px-5 py-1.5 text-xs font-black hover:bg-gray-50 transition">CANCEL</button>
-                  <button onClick={handleUpdateProfile} className="bg-blue-600 text-white rounded-full px-5 py-1.5 text-xs font-black shadow-lg shadow-blue-100 flex items-center gap-1"><Check size={14}/> SAVE</button>
+                  <button onClick={() => setIsEditing(false)} className="border border-gray-200 rounded-full px-5 py-1.5 text-xs font-black hover:bg-gray-50 transition tracking-tighter">CANCEL</button>
+                  <button onClick={handleUpdateProfile} className="bg-blue-600 text-white rounded-full px-5 py-1.5 text-xs font-black shadow-lg shadow-blue-100 flex items-center gap-1 uppercase tracking-tighter"><Check size={14}/> SAVE</button>
                 </>
               ) : (
-                <button onClick={() => setIsEditing(true)} className="border border-gray-200 rounded-full px-5 py-1.5 text-xs font-black hover:bg-gray-50 transition tracking-tight">EDIT PROFILE</button>
+                <button onClick={() => setIsEditing(true)} className="border border-gray-200 rounded-full px-5 py-1.5 text-xs font-black hover:bg-gray-50 transition tracking-tight uppercase">Edit Profile</button>
               )}
             </div>
 
@@ -227,7 +237,7 @@ export default function App() {
               {isEditing ? (
                 <textarea 
                   className="w-full bg-gray-50 p-3 rounded-xl text-sm font-medium border border-gray-100 outline-none focus:ring-2 focus:ring-blue-100"
-                  placeholder="自己紹介を書いてみよう"
+                  placeholder="自己紹介を入力"
                   value={profileData.bio}
                   onChange={(e) => setProfileData({...profileData, bio: e.target.value})}
                   rows={3}
@@ -264,6 +274,7 @@ export default function App() {
         </div>
       )}
 
+      {/* --- ポップアップ詳細 --- */}
       {selectedPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" onClick={() => setSelectedPost(null)}>
           <div className="bg-white w-full max-w-sm rounded-[2rem] overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
@@ -272,7 +283,7 @@ export default function App() {
                   <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedPost.profiles?.username}`} className="w-8 h-8 rounded-full" />
                   <span className="font-black text-xs">{selectedPost.profiles?.username}</span>
                 </div>
-                <X size={20} onClick={() => setSelectedPost(null)} />
+                <X size={20} className="text-gray-400 cursor-pointer" onClick={() => setSelectedPost(null)} />
              </div>
              <img src={selectedPost.image_url} className="w-full aspect-square object-cover" />
              <div className="p-5">
@@ -295,13 +306,13 @@ export default function App() {
 
 function PostCard({ post, setDmTarget }) {
   return (
-    <article className="p-4 flex gap-3">
+    <article className="p-4 flex gap-3 hover:bg-gray-50/50 transition duration-300">
       <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username}`} className="w-11 h-11 rounded-full cursor-pointer shadow-sm border border-gray-50" onClick={() => setDmTarget && setDmTarget(post.profiles)} />
       <div className="flex-grow">
         <div className="flex items-center gap-1"><span className="font-black text-sm">{post.profiles?.username}</span><span className="text-gray-400 text-[10px] uppercase font-bold">· {new Date(post.created_at).toLocaleDateString()}</span></div>
         <p className="text-sm mt-1 text-gray-800 leading-relaxed font-medium">{post.content}</p>
         {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl border border-gray-100 max-h-96 w-full object-cover" />}
-        <div className="flex justify-between mt-4 text-gray-400 max-w-[240px]"><div className="flex items-center gap-1.5"><Heart size={18} /><span className="text-[11px] font-bold">12</span></div><div className="flex items-center gap-1.5"><MessageCircle size={18} /><span className="text-[11px] font-bold">4</span></div><Share2 size={18} /></div>
+        <div className="flex justify-between mt-4 text-gray-400 max-w-[240px]"><div className="flex items-center gap-1.5"><Heart size={18} /><span className="text-[11px] font-bold">0</span></div><div className="flex items-center gap-1.5"><MessageCircle size={18} /><span className="text-[11px] font-bold">0</span></div><Share2 size={18} /></div>
       </div>
     </article>
   );
@@ -341,9 +352,9 @@ function DMScreen({ target, setDmTarget, currentUser }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col animate-in slide-in-from-right">
+    <div className="fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col animate-in slide-in-from-right duration-300">
       <header className="bg-white p-4 flex items-center gap-3 border-b border-gray-100 shadow-sm sticky top-0">
-        <ChevronLeft onClick={() => setDmTarget(null)} />
+        <ChevronLeft onClick={() => setDmTarget(null)} className="cursor-pointer" />
         <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${target.username}`} className="w-10 h-10 rounded-full" />
         <span className="font-black text-sm">{target.username}</span>
       </header>
@@ -386,4 +397,4 @@ function LoginScreen({ setUsername, setUser, fetchData }) {
       <button onClick={handleSignUp} className="w-full max-w-xs bg-blue-600 text-white font-black py-6 rounded-2xl shadow-2xl hover:bg-blue-700 active:scale-95 uppercase tracking-widest text-sm">Enter the Grid</button>
     </div>
   );
-        }
+    }
