@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User, Hash } from 'lucide-react';
 
 export default function App() {
   const [view, setView] = useState('home'); 
@@ -12,6 +12,9 @@ export default function App() {
   const [username, setUsername] = useState('');
   const [selectedPost, setSelectedPost] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Tailwind CDNを動的に読み込む（設定ファイル不要の最終手段）
+  const TailwindScript = () => <script src="https://cdn.tailwindcss.com"></script>;
 
   useEffect(() => {
     checkUser();
@@ -29,56 +32,34 @@ export default function App() {
 
   async function fetchData() {
     setLoading(true);
-    console.log("データ取得を開始します...");
-
-    // 1. 投稿の取得（プロフィールを結合）
-    const { data: postsData, error: postsError } = await supabase
+    // 投稿とプロフィールを結合して取得
+    const { data: postsData } = await supabase
       .from('posts')
       .select('*, profiles(username, avatar_url)')
       .order('created_at', { ascending: false });
+    if (postsData) setPosts(postsData);
 
-    if (postsError) {
-      console.error("投稿取得エラー:", postsError.message);
-    } else {
-      console.log("取得された投稿:", postsData);
-      setPosts(postsData || []);
-    }
-
-    // 2. ユーザー一覧の取得
-    const { data: profData, error: profError } = await supabase.from('profiles').select('*');
-    if (profError) {
-      console.error("プロフィール取得エラー:", profError.message);
-    } else {
-      setAllProfiles(profData || []);
-    }
+    // 全ユーザーを取得（検索用）
+    const { data: profData } = await supabase.from('profiles').select('*');
+    if (profData) setAllProfiles(profData);
     
     setLoading(false);
   }
 
   async function handlePost(imageUrl = null) {
     if (!newPost.trim() || !user) return;
-    
-    // プロフィールがなければ作成
-    const { data: profile } = await supabase.from('profiles').select('id').eq('id', user.id).single();
-    if (!profile) {
-      await supabase.from('profiles').upsert([{ id: user.id, username: username || 'Guest' }]);
-    }
-
     const { error } = await supabase.from('posts').insert([{ 
       content: newPost, 
       user_id: user.id,
       image_url: imageUrl 
     }]);
-
-    if (error) {
-      console.error("投稿失敗:", error.message);
-      alert("投稿エラー: " + error.message);
-    } else {
+    if (!error) {
       setNewPost('');
-      fetchData(); // 投稿後に再読込
+      fetchData();
     }
   }
 
+  // オムニ検索ロジック
   const filteredPosts = posts.filter(p => p.content?.toLowerCase().includes(searchQuery.toLowerCase()));
   const filteredUsers = allProfiles.filter(u => u.username?.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -86,88 +67,84 @@ export default function App() {
 
   return (
     <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans text-black relative">
-      <script src="https://cdn.tailwindcss.com"></script>
+      <TailwindScript />
 
-      {/* --- ホーム画面 --- */}
+      {/* --- ホーム --- */}
       {view === 'home' && (
         <div className="animate-in fade-in">
           <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100 p-4 flex justify-between items-center">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-500 bg-clip-text text-transparent italic tracking-tighter">Beta</h1>
-            <div className="flex gap-4"><Camera size={24} /><MessageCircle size={24} /></div>
+            <h1 className="text-2xl font-black bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent italic tracking-tighter">GridStream</h1>
+            <div className="flex gap-4 text-gray-700"><Camera size={24} /><MessageCircle size={24} /></div>
           </header>
           
           <div className="p-4 border-b border-gray-100 flex gap-3">
-            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold uppercase">{username ? username[0] : 'U'}</div>
+            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold uppercase">{username ? username[0] : 'U'}</div>
             <div className="flex-grow">
               <textarea className="w-full border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent" placeholder="今、何してる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
               <div className="flex justify-end gap-2">
-                <button onClick={() => handlePost(`https://picsum.photos/seed/${Date.now()}/600/600`)} className="bg-gray-50 text-gray-500 px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1">📷 画像付き</button>
-                <button onClick={() => handlePost()} className="bg-indigo-600 text-white px-5 py-2 rounded-full font-bold text-sm shadow-md">ポスト</button>
+                <button onClick={() => handlePost(`https://picsum.photos/seed/${Date.now()}/600/600`)} className="bg-gray-50 text-gray-500 px-4 py-2 rounded-full font-bold text-xs flex items-center gap-1 active:bg-gray-200 transition">📷 画像付き</button>
+                <button onClick={() => handlePost()} className="bg-blue-600 text-white px-5 py-2 rounded-full font-bold text-sm shadow-lg shadow-blue-100 active:scale-95 transition">ポスト</button>
               </div>
             </div>
           </div>
 
           <div className="divide-y divide-gray-100">
-            {loading ? (
-              <div className="p-10 text-center text-gray-400">読み込み中...</div>
-            ) : posts.length === 0 ? (
-              <div className="p-10 text-center text-gray-400">投稿がありません。<br/>右下のコンソールを確認してください。</div>
-            ) : (
-              posts.map((post) => (
-                <article key={post.id} className="p-4 flex gap-3 hover:bg-gray-50 transition">
-                  <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username || 'Guest'}`} />
+            {posts.map((post) => (
+              <article key={post.id} className="p-4 flex gap-3 hover:bg-gray-50/50 transition">
+                <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.profiles?.username || 'Guest'}`} />
+                </div>
+                <div className="flex-grow">
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-sm">{post.profiles?.username || '読み込み中...'}</span>
+                    <span className="text-gray-400 text-xs">· なう</span>
                   </div>
-                  <div className="flex-grow">
-                    <div className="flex items-center gap-1">
-                      <span className="font-bold text-sm">{post.profiles?.username || 'Unknown User'}</span>
-                      <span className="text-gray-400 text-xs">· なう</span>
-                    </div>
-                    <p className="text-sm mt-1 leading-relaxed">{post.content}</p>
-                    {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl border border-gray-100 max-h-80 w-full object-cover" />}
-                    <div className="flex justify-between mt-3 text-gray-400 max-w-[200px]"><Heart size={18} /><MessageCircle size={18} /><Share2 size={18} /></div>
-                  </div>
-                </article>
-              ))
-            )}
+                  <p className="text-sm mt-1 leading-relaxed text-gray-800">{post.content}</p>
+                  {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl border border-gray-100 max-h-80 w-full object-cover shadow-sm" />}
+                  <div className="flex justify-between mt-3 text-gray-400 max-w-[200px]"><Heart size={18} /><MessageCircle size={18} /><Share2 size={18} /></div>
+                </div>
+              </article>
+            ))}
           </div>
         </div>
       )}
 
-      {/* --- 検索画面 (オムニ検索) --- */}
+      {/* --- 検索 (オムニ検索) --- */}
       {view === 'search' && (
         <div className="animate-in fade-in">
           <div className="p-4 sticky top-0 bg-white z-10 border-b border-gray-50">
             <div className="relative">
               <Search className="absolute left-3 top-3 text-gray-400" size={20} />
-              <input type="text" placeholder="ユーザー、キーワードを検索" className="w-full bg-gray-100 rounded-xl py-2.5 pl-10 pr-4 outline-none" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              <input type="text" placeholder="ユーザー、つぶやきを検索" className="w-full bg-gray-100 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:ring-2 focus:ring-blue-200" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
           </div>
 
           {searchQuery === '' ? (
             <div className="grid grid-cols-3 gap-[2px]">
               {posts.filter(p => p.image_url).map((post) => (
-                <div key={post.id} className="aspect-square bg-gray-100 overflow-hidden" onClick={() => setSelectedPost(post)}>
+                <div key={post.id} className="aspect-square bg-gray-100 overflow-hidden cursor-pointer active:opacity-80" onClick={() => setSelectedPost(post)}>
                   <img src={post.image_url} className="w-full h-full object-cover" />
                 </div>
               ))}
             </div>
           ) : (
             <div className="p-4 space-y-6">
+              {filteredUsers.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest flex items-center gap-2"><User size={14}/> ユーザー</h3>
+                  {filteredUsers.map(u => (
+                    <div key={u.id} className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden"><img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} /></div>
+                      <span className="font-bold text-sm">{u.username}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div>
-                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest">ユーザー</h3>
-                {filteredUsers.map(u => (
-                  <div key={u.id} className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden"><img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} /></div>
-                    <span className="font-bold text-sm">{u.username}</span>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest">つぶやき</h3>
+                <h3 className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest flex items-center gap-2"><Hash size={14}/> つぶやき</h3>
                 {filteredPosts.map(p => (
-                  <div key={p.id} className="py-3 border-b border-gray-50 text-sm">
-                    <p className="font-bold text-xs text-indigo-500">@{p.profiles?.username}</p>
+                  <div key={p.id} className="py-3 border-b border-gray-50 text-sm" onClick={() => p.image_url && setSelectedPost(p)}>
+                    <p className="font-bold text-xs text-blue-500">@{p.profiles?.username}</p>
                     <p className="text-gray-800">{p.content}</p>
                   </div>
                 ))}
@@ -177,10 +154,10 @@ export default function App() {
         </div>
       )}
 
-      {/* --- ポップアップモーダル --- */}
+      {/* --- ポップアップ --- */}
       {selectedPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedPost(null)}>
-          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl relative" onClick={e => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <button className="absolute top-4 right-4 bg-black/50 text-white p-1 rounded-full" onClick={() => setSelectedPost(null)}><X size={20}/></button>
             <img src={selectedPost.image_url} className="w-full aspect-square object-cover" />
             <div className="p-5">
@@ -191,9 +168,9 @@ export default function App() {
         </div>
       )}
 
-      {/* ナビゲーション */}
+      {/* ナビ */}
       <nav className="fixed bottom-0 max-w-md w-full bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around py-4 text-gray-400 z-20">
-        <HomeIcon onClick={() => setView('home')} className={view === 'home' ? 'text-indigo-600' : ''} />
+        <HomeIcon onClick={() => setView('home')} className={view === 'home' ? 'text-blue-600' : ''} />
         <Search onClick={() => setView('search')} className={view === 'search' ? 'text-black font-bold' : ''} />
         <MessageCircle />
         <User onClick={() => setView('profile')} className={view === 'profile' ? 'text-black font-bold' : ''} />
@@ -214,11 +191,12 @@ function LoginScreen({ username, setUsername, setUser, fetchData }) {
   };
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-gray-50">
-      <h1 className="text-4xl font-extrabold mb-8 text-indigo-600 italic tracking-tighter">Beta</h1>
+      <script src="https://cdn.tailwindcss.com"></script>
+      <h1 className="text-4xl font-black mb-8 text-blue-600 italic tracking-tighter">GridStream</h1>
       <div className="w-full max-w-sm bg-white p-8 rounded-3xl border border-gray-100 shadow-xl text-center">
-        <input type="text" className="w-full border p-4 rounded-2xl mb-4 outline-none focus:ring-2 focus:ring-indigo-100" placeholder="ユーザー名" value={username} onChange={(e) => setUsername(e.target.value)} />
-        <button onClick={handleSignUp} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl">新しく始める</button>
+        <input type="text" className="w-full border p-4 rounded-2xl mb-4 outline-none focus:ring-2 focus:ring-blue-100 text-black bg-white" placeholder="ユーザー名" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <button onClick={handleSignUp} className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg">新しく始める</button>
       </div>
     </div>
   );
-        }
+  }
