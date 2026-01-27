@@ -32,15 +32,23 @@ export default function App() {
   const avatarInputRef = useRef(null);
   const headerInputRef = useRef(null);
 
+  // 初回ロードとユーザー状態監視
   useEffect(() => {
     checkUser();
-    fetchData();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) fetchMyProfile(session.user.id);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        fetchMyProfile(currentUser.id);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // ユーザー情報が変わった時に投稿データを取得（ここが修正ポイント！）
+  useEffect(() => {
+    fetchData();
+  }, [user]);
 
   async function checkUser() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -55,7 +63,6 @@ export default function App() {
     if (data) { setMyProfile(data); setEditData(data); }
   }
 
-  // --- 投稿といいね情報を取得 ---
   async function fetchData() {
     const { data: postsData, error } = await supabase
       .from('posts')
@@ -68,11 +75,11 @@ export default function App() {
     
     if (error) console.error("Fetch posts error:", error);
     if (postsData) {
-      // いいね数をカウントし、自分がいいねしたかを判定
+      // ユーザーが確定している状態でいいね判定
       const formattedPosts = postsData.map(post => ({
         ...post,
         like_count: post.likes?.length || 0,
-        is_liked: post.likes?.some(l => l.user_id === user?.id)
+        is_liked: user ? post.likes?.some(l => l.user_id === user.id) : false
       }));
       setPosts(formattedPosts);
     }
@@ -81,18 +88,27 @@ export default function App() {
     if (profData) setAllProfiles(profData);
   }
 
-  // --- いいねのトグル機能 ---
   async function toggleLike(postId, isLiked) {
     if (!user) return;
 
+    // UIを即座に更新する「楽観的アップデート」
+    setPosts(prev => prev.map(p => {
+      if (p.id === postId) {
+        return {
+          ...p,
+          is_liked: !isLiked,
+          like_count: isLiked ? p.like_count - 1 : p.like_count + 1
+        };
+      }
+      return p;
+    }));
+
     if (isLiked) {
-      // 解除
       await supabase.from('likes').delete().eq('post_id', postId).eq('user_id', user.id);
     } else {
-      // 登録
       await supabase.from('likes').insert([{ post_id: postId, user_id: user.id }]);
     }
-    // 状態をリロードせずに更新
+    // 最終的な整合性を取るために再取得
     fetchData();
   }
 
@@ -439,7 +455,6 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
   );
 }
 
-// --- いいね対応版 PostCard ---
 function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser, darkMode }) {
   const isMyPost = currentUser && post.user_id === currentUser.id;
   return (
@@ -472,7 +487,6 @@ function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser,
   );
 }
 
-// --- いいね対応版 PostDetailModal ---
 function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLike, currentUser, darkMode }) {
   const isMyPost = currentUser && post.user_id === currentUser.id;
   return (
@@ -621,4 +635,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-}
+  }
