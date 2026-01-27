@@ -71,7 +71,6 @@ export default function App() {
     return data.secure_url;
   }
 
-  // アイコン・ヘッダー画像プレビュー用
   const handleImageSelect = (e, type) => {
     const file = e.target.files[0];
     if (file) {
@@ -83,14 +82,8 @@ export default function App() {
   async function handleSaveProfile() {
     setUploading(true);
     let { avatar_url, header_url, display_name, username, bio } = editData;
-    
-    // 実際にファイルをCloudinaryへアップロード
-    if (avatarInputRef.current?.files[0]) {
-      avatar_url = await uploadToCloudinary(avatarInputRef.current.files[0]);
-    }
-    if (headerInputRef.current?.files[0]) {
-      header_url = await uploadToCloudinary(headerInputRef.current.files[0]);
-    }
+    if (avatarInputRef.current?.files[0]) avatar_url = await uploadToCloudinary(avatarInputRef.current.files[0]);
+    if (headerInputRef.current?.files[0]) header_url = await uploadToCloudinary(headerInputRef.current.files[0]);
 
     const { error } = await supabase.from('profiles').update({ 
       display_name, 
@@ -157,13 +150,11 @@ export default function App() {
     <div className={`max-w-md mx-auto min-h-screen pb-20 border-x font-sans relative shadow-2xl overflow-x-hidden transition-colors duration-300 ${darkMode ? 'bg-black text-white border-gray-800' : 'bg-white text-black border-gray-100'}`}>
       <script src="https://cdn.tailwindcss.com"></script>
 
-      {/* --- モーダル・全画面系 --- */}
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
       {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} darkMode={darkMode} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
-      {/* --- HOME --- */}
       {view === 'home' && (
         <div className="animate-in fade-in">
           <header className={`sticky top-0 z-30 backdrop-blur-md border-b p-4 flex justify-between items-center ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-50'}`}>
@@ -174,7 +165,7 @@ export default function App() {
           </header>
           <form onSubmit={handlePost} className={`p-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
             <div className="flex gap-3">
-              <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-10 h-10 rounded-full object-cover shadow-sm" onClick={() => openProfile(user.id)} />
+              <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-10 h-10 rounded-full object-cover shadow-sm cursor-pointer" onClick={() => openProfile(user.id)} />
               <textarea className={`flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent font-medium`} placeholder="今、何を考えてる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
             </div>
             <div className="flex justify-between items-center pl-12 mt-2">
@@ -188,7 +179,6 @@ export default function App() {
         </div>
       )}
 
-      {/* --- PROFILE --- */}
       {view === 'profile' && profileInfo && (
         <div className="animate-in fade-in pb-10">
           <div className={`h-32 relative overflow-hidden bg-gray-200 ${!profileInfo.header_url && 'bg-gradient-to-br from-blue-700 via-indigo-600 to-cyan-500'}`}>
@@ -326,7 +316,7 @@ function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
 
         <section className="pt-10">
           <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-red-50 text-red-500 font-black uppercase text-xs tracking-widest hover:bg-red-100 transition">
-            <LogOut size={18}/> Logout from Beta
+            <LogOut size={18}/> Logout from GridStream
           </button>
         </section>
       </div>
@@ -445,14 +435,14 @@ function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelect
 function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, darkMode }) {
   return (
     <div className="animate-in fade-in">
-      <header className={`p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-100'}`}>Stream Chat</header>
+      <header className={`p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-100'}`}>GridStream Chat</header>
       <div className="p-2">
         {allProfiles.filter(p => p.id !== user.id).map(u => (
           <div key={u.id} className={`flex items-center gap-4 p-4 rounded-2xl cursor-pointer transition ${darkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-50'}`} onClick={() => setDmTarget(u)}>
             <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-sm" onClick={(e) => { e.stopPropagation(); openProfile(u.id); }} />
             <div className={`flex-grow border-b pb-2 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
               <p className="font-bold text-sm">{u.display_name}</p>
-              <p className="text-xs text-blue-500 font-medium mt-1 uppercase tracking-tighter italic">Tap to Chat</p>
+              <p className="text-xs text-blue-500 font-medium mt-1 uppercase tracking-tighter italic">Tap to Stream</p>
             </div>
           </div>
         ))}
