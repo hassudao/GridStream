@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, Check, AtSign, Zap, LogOut, Mail, Lock, MoreHorizontal, Settings, Save, Moon, Sun } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, Check, AtSign, Zap, LogOut, Mail, Lock, MoreHorizontal, Settings, Save, Moon, Sun, AlertCircle } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -275,31 +275,78 @@ export default function App() {
 // --- SUB-COMPONENTS ---
 
 function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
+  const [loading, setLoading] = useState(false);
+  const [newEmail, setNewEmail] = useState(user.email);
+  const [newPassword, setNewPassword] = useState('');
+  const [message, setMessage] = useState({ type: '', text: '' });
+
+  const handleUpdateAccount = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage({ type: '', text: '' });
+
+    const updates = {};
+    if (newEmail !== user.email) updates.email = newEmail;
+    if (newPassword) updates.password = newPassword;
+
+    if (Object.keys(updates).length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser(updates);
+
+    if (error) {
+      setMessage({ type: 'error', text: error.message });
+    } else {
+      setMessage({ type: 'success', text: 'Account updated! Check email if changed.' });
+      setNewPassword('');
+    }
+    setLoading(false);
+  };
+
   const handleLogout = () => {
     supabase.auth.signOut();
     onClose();
   };
 
   return (
-    <div className={`fixed inset-0 z-[100] animate-in slide-in-from-bottom duration-300 ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
-      <header className={`p-4 border-b flex items-center gap-4 ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+    <div className={`fixed inset-0 z-[100] animate-in slide-in-from-bottom duration-300 overflow-y-auto ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
+      <header className={`p-4 border-b flex items-center gap-4 sticky top-0 z-10 ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-100'}`}>
         <ChevronLeft onClick={onClose} className="cursor-pointer" />
         <h2 className="font-black uppercase tracking-tighter">Settings</h2>
       </header>
-      <div className="p-4 space-y-6">
-        <section>
-          <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-4">Account</h3>
-          <div className={`space-y-2`}>
-            <button className={`w-full flex justify-between items-center p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-              <div className="flex items-center gap-3"><Mail size={18} className="text-blue-500"/><span className="text-sm font-bold">Email Address</span></div>
-              <span className="text-xs text-gray-400">{user.email}</span>
-            </button>
-            <button className={`w-full flex justify-between items-center p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-              <div className="flex items-center gap-3"><Lock size={18} className="text-blue-500"/><span className="text-sm font-bold">Change Password</span></div>
-              <ChevronLeft size={16} className="rotate-180 text-gray-300"/>
-            </button>
-          </div>
-        </section>
+      
+      <div className="p-4 space-y-8 pb-20">
+        <form onSubmit={handleUpdateAccount} className="space-y-6">
+          <section>
+            <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-4">Account Security</h3>
+            {message.text && (
+              <div className={`p-4 rounded-2xl mb-4 flex items-center gap-3 text-xs font-bold ${message.type === 'error' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
+                <AlertCircle size={16} /> {message.text}
+              </div>
+            )}
+            <div className="space-y-3">
+              <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Email Address</label>
+                <div className="flex items-center gap-3">
+                  <Mail size={18} className="text-blue-500"/>
+                  <input type="email" className="bg-transparent w-full outline-none text-sm font-bold" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+                </div>
+              </div>
+              <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">New Password</label>
+                <div className="flex items-center gap-3">
+                  <Lock size={18} className="text-blue-500"/>
+                  <input type="password" placeholder="••••••••" className="bg-transparent w-full outline-none text-sm font-bold" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                </div>
+              </div>
+              <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg uppercase text-xs tracking-widest active:scale-95 transition">
+                {loading ? 'Updating...' : 'Update Account'}
+              </button>
+            </div>
+          </section>
+        </form>
 
         <section>
           <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-4">Preference</h3>
@@ -314,7 +361,7 @@ function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
           </button>
         </section>
 
-        <section className="pt-10">
+        <section className="pt-4">
           <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-red-50 text-red-500 font-black uppercase text-xs tracking-widest hover:bg-red-100 transition">
             <LogOut size={18}/> Logout from GridStream
           </button>
