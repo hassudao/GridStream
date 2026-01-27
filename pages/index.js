@@ -56,8 +56,14 @@ export default function App() {
   }
 
   async function fetchData() {
-    const { data: postsData } = await supabase.from('posts').select('*, profiles(id, username, display_name, avatar_url)').order('created_at', { ascending: false });
+    const { data: postsData, error } = await supabase
+      .from('posts')
+      .select('*, profiles(id, username, display_name, avatar_url)')
+      .order('created_at', { ascending: false });
+    
+    if (error) console.error("Fetch posts error:", error);
     if (postsData) setPosts(postsData);
+    
     const { data: profData } = await supabase.from('profiles').select('*');
     if (profData) setAllProfiles(profData);
   }
@@ -79,16 +85,14 @@ export default function App() {
     }
   };
 
-  // ユーザー名と表示名のバリデーション関数
   const validateProfile = (displayName, username) => {
     if (displayName.length > 20) {
       alert("表示名は20文字以内で入力してください。");
       return false;
     }
-    // 英数字とアンダースコアのみ許可する正規表現
     const usernameRegex = /^[a-zA-Z0-9_]+$/;
     if (!usernameRegex.test(username)) {
-      alert("ユーザー名には英数字とアンダースコアのみ使用可能です（ひらがな・カタカナ不可）。");
+      alert("ユーザー名には英数字とアンダースコアのみ使用可能です。");
       return false;
     }
     return true;
@@ -96,7 +100,6 @@ export default function App() {
 
   async function handleSaveProfile() {
     if (!validateProfile(editData.display_name, editData.username)) return;
-
     setUploading(true);
     let { avatar_url, header_url, display_name, username, bio } = editData;
     if (avatarInputRef.current?.files[0]) avatar_url = await uploadToCloudinary(avatarInputRef.current.files[0]);
@@ -128,20 +131,33 @@ export default function App() {
     setUploading(true);
     let imageUrl = null;
     if (fileInputRef.current?.files[0]) imageUrl = await uploadToCloudinary(fileInputRef.current.files[0]);
-    await supabase.from('posts').insert([{ content: newPost, user_id: user.id, image_url: imageUrl }]);
+    const { error } = await supabase.from('posts').insert([{ content: newPost, user_id: user.id, image_url: imageUrl }]);
+    if (error) alert("投稿に失敗しました: " + error.message);
     setNewPost('');
     if (fileInputRef.current) fileInputRef.current.value = "";
     fetchData();
     setUploading(false);
   }
 
+  // --- 修正された削除関数 ---
   async function handleDeletePost(postId) {
-    if (!window.confirm("この投稿を削除しますか？")) return;
-    const { error } = await supabase.from('posts').delete().eq('id', postId);
-    if (error) alert(error.message);
-    else {
-      setPosts(posts.filter(p => p.id !== postId));
+    if (!window.confirm("この投稿を永久に削除しますか？リロードしても戻らなくなります。")) return;
+    
+    // 1. まずDBから削除
+    const { error } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', postId)
+      .eq('user_id', user.id); // 自分の投稿のみ削除可能にする安全策
+
+    if (error) {
+      console.error("Delete error:", error);
+      alert("DBの削除に失敗しました: " + error.message);
+    } else {
+      // 2. DB削除成功時のみ、フロントの表示(State)を更新
+      setPosts(prev => prev.filter(p => p.id !== postId));
       if (selectedPost?.id === postId) setSelectedPost(null);
+      console.log("Post deleted successfully from DB and State");
     }
   }
 
@@ -341,31 +357,17 @@ function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
     e.preventDefault();
     setLoading(true);
     setMessage({ type: '', text: '' });
-
     const updates = {};
     if (newEmail !== user.email) updates.email = newEmail;
     if (newPassword) updates.password = newPassword;
-
-    if (Object.keys(updates).length === 0) {
-      setLoading(false);
-      return;
-    }
-
+    if (Object.keys(updates).length === 0) { setLoading(false); return; }
     const { error } = await supabase.auth.updateUser(updates);
-
-    if (error) {
-      setMessage({ type: 'error', text: error.message });
-    } else {
-      setMessage({ type: 'success', text: 'Account updated! Check email if changed.' });
-      setNewPassword('');
-    }
+    if (error) setMessage({ type: 'error', text: error.message });
+    else { setMessage({ type: 'success', text: 'Account updated!' }); setNewPassword(''); }
     setLoading(false);
   };
 
-  const handleLogout = () => {
-    supabase.auth.signOut();
-    onClose();
-  };
+  const handleLogout = () => { supabase.auth.signOut(); onClose(); };
 
   return (
     <div className={`fixed inset-0 z-[100] animate-in slide-in-from-bottom duration-300 overflow-y-auto ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
@@ -373,56 +375,31 @@ function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
         <ChevronLeft onClick={onClose} className="cursor-pointer" />
         <h2 className="font-black uppercase tracking-tighter">Settings</h2>
       </header>
-      
       <div className="p-4 space-y-8 pb-20">
         <form onSubmit={handleUpdateAccount} className="space-y-6">
           <section>
             <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-4">Account Security</h3>
-            {message.text && (
-              <div className={`p-4 rounded-2xl mb-4 flex items-center gap-3 text-xs font-bold ${message.type === 'error' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>
-                <AlertCircle size={16} /> {message.text}
-              </div>
-            )}
+            {message.text && <div className={`p-4 rounded-2xl mb-4 flex items-center gap-3 text-xs font-bold ${message.type === 'error' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}><AlertCircle size={16} /> {message.text}</div>}
             <div className="space-y-3">
               <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-                <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Email Address</label>
-                <div className="flex items-center gap-3">
-                  <Mail size={18} className="text-blue-500"/>
-                  <input type="email" className="bg-transparent w-full outline-none text-sm font-bold" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-                </div>
+                <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Email</label>
+                <div className="flex items-center gap-3"><Mail size={18} className="text-blue-500"/><input type="email" className="bg-transparent w-full outline-none text-sm font-bold" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} /></div>
               </div>
               <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
                 <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">New Password</label>
-                <div className="flex items-center gap-3">
-                  <Lock size={18} className="text-blue-500"/>
-                  <input type="password" placeholder="••••••••" className="bg-transparent w-full outline-none text-sm font-bold" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                </div>
+                <div className="flex items-center gap-3"><Lock size={18} className="text-blue-500"/><input type="password" placeholder="••••••••" className="bg-transparent w-full outline-none text-sm font-bold" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></div>
               </div>
-              <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg uppercase text-xs tracking-widest active:scale-95 transition">
-                {loading ? 'Updating...' : 'Update Account'}
-              </button>
+              <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg uppercase text-xs tracking-widest">Update</button>
             </div>
           </section>
         </form>
-
         <section>
-          <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-4">Preference</h3>
           <button onClick={() => setDarkMode(!darkMode)} className={`w-full flex justify-between items-center p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-            <div className="flex items-center gap-3">
-              {darkMode ? <Sun size={18} className="text-yellow-500"/> : <Moon size={18} className="text-indigo-500"/>}
-              <span className="text-sm font-bold">{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
-            </div>
-            <div className={`w-10 h-6 rounded-full relative transition-colors ${darkMode ? 'bg-blue-600' : 'bg-gray-300'}`}>
-              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${darkMode ? 'right-1' : 'left-1'}`} />
-            </div>
+            <span className="text-sm font-bold">{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
+            <div className={`w-10 h-6 rounded-full relative transition-colors ${darkMode ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${darkMode ? 'right-1' : 'left-1'}`} /></div>
           </button>
         </section>
-
-        <section className="pt-4">
-          <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-red-50 text-red-500 font-black uppercase text-xs tracking-widest hover:bg-red-100 transition">
-            <LogOut size={18}/> Logout from GridStream
-          </button>
-        </section>
+        <section><button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-red-50 text-red-500 font-black uppercase text-xs tracking-widest">Logout</button></section>
       </div>
     </div>
   );
@@ -431,7 +408,6 @@ function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
 function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMode }) {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     async function fetchList() {
       setLoading(true);
@@ -447,33 +423,17 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
     }
     if (userId) fetchList();
   }, [type, userId]);
-
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end justify-center">
       <div className={`w-full max-w-md rounded-t-[2.5rem] max-h-[80vh] flex flex-col shadow-2xl ${darkMode ? 'bg-black' : 'bg-white'}`}>
-        <div className={`p-6 border-b flex justify-between items-center rounded-t-[2.5rem] ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-          <h3 className="font-black text-lg uppercase tracking-widest text-blue-600">{type}</h3>
-          <X onClick={onClose} className="cursor-pointer text-gray-300" />
-        </div>
+        <div className={`p-6 border-b flex justify-between items-center rounded-t-[2.5rem] ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}><h3 className="font-black text-lg uppercase text-blue-600">{type}</h3><X onClick={onClose} className="cursor-pointer" /></div>
         <div className="overflow-y-auto p-4 space-y-2">
-          {loading ? (
-             <p className="text-center py-10 animate-pulse font-black text-gray-500 uppercase">Searching...</p>
-          ) : list.length > 0 ? (
-            list.map(u => (
-              <div key={u.id} className={`flex items-center gap-4 cursor-pointer p-3 rounded-2xl transition group ${darkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-50'}`} onClick={() => openProfile(u.id)}>
-                <img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover border border-gray-100" />
-                <div className="flex-grow">
-                  <p className="font-black text-sm group-hover:text-blue-600 transition">{u.display_name}</p>
-                  <p className="text-gray-400 text-xs font-bold">@{u.username}</p>
-                </div>
-                <ChevronLeft className="text-gray-300 rotate-180" size={16} />
-              </div>
-            ))
-          ) : (
-            <div className="py-20 text-center">
-              <p className="text-gray-300 font-black italic uppercase">No {type} found.</p>
+          {loading ? <p className="text-center py-10 animate-pulse font-black text-gray-500 uppercase">Searching...</p> : list.map(u => (
+            <div key={u.id} className="flex items-center gap-4 cursor-pointer p-3 rounded-2xl hover:bg-gray-50/10" onClick={() => openProfile(u.id)}>
+              <img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover" />
+              <div className="flex-grow"><p className="font-black text-sm">{u.display_name}</p><p className="text-gray-400 text-xs font-bold">@{u.username}</p></div>
             </div>
-          )}
+          ))}
         </div>
       </div>
     </div>
@@ -482,10 +442,9 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
 
 function PostCard({ post, openProfile, getAvatar, onDelete, currentUser, darkMode }) {
   const isMyPost = currentUser && post.user_id === currentUser.id;
-
   return (
     <article className={`p-4 flex gap-3 hover:bg-gray-50/5 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-      <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover shadow-sm" onClick={() => openProfile(post.profiles.id)} />
+      <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles.id)} />
       <div className="flex-grow min-w-0">
         <div className="flex justify-between items-start">
           <div className="flex flex-col cursor-pointer mb-1" onClick={() => openProfile(post.profiles.id)}>
@@ -499,8 +458,8 @@ function PostCard({ post, openProfile, getAvatar, onDelete, currentUser, darkMod
           )}
         </div>
         <p className={`text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{post.content}</p>
-        {post.image_url && <img src={post.image_url} className={`mt-3 rounded-2xl w-full max-h-80 object-cover border shadow-sm ${darkMode ? 'border-gray-800' : 'border-gray-100'}`} />}
-        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px]"><Heart size={18} className="hover:text-red-500 transition cursor-pointer"/><MessageCircle size={18} className="hover:text-blue-500 transition cursor-pointer"/><Share2 size={18} className="hover:text-green-500 transition cursor-pointer"/></div>
+        {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100" />}
+        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px]"><Heart size={18} /><MessageCircle size={18} /><Share2 size={18} /></div>
       </div>
     </article>
   );
@@ -508,26 +467,20 @@ function PostCard({ post, openProfile, getAvatar, onDelete, currentUser, darkMod
 
 function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, currentUser, darkMode }) {
   const isMyPost = currentUser && post.user_id === currentUser.id;
-
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4">
       <div className="absolute top-6 right-6 flex gap-4">
-        {isMyPost && (
-          <button onClick={() => { onDelete(post.id); onClose(); }} className="text-white p-2 hover:bg-red-500/20 rounded-full transition"><Trash2 size={24}/></button>
-        )}
+        {isMyPost && <button onClick={() => { onDelete(post.id); onClose(); }} className="text-white p-2 hover:bg-red-500/20 rounded-full transition"><Trash2 size={24}/></button>}
         <button onClick={onClose} className="text-white p-2 hover:bg-white/10 rounded-full transition"><X size={28}/></button>
       </div>
-      <div className={`w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
-        <div className={`p-5 border-b flex items-center gap-3 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-          <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover cursor-pointer" onClick={() => { openProfile(post.profiles.id); onClose(); }} />
-          <div className="flex flex-col">
-            <p className="font-black text-sm cursor-pointer" onClick={() => { openProfile(post.profiles.id); onClose(); }}>{post.profiles?.display_name}</p>
-            <p className="text-gray-400 text-xs font-bold">@{post.profiles?.username}</p>
-          </div>
+      <div className={`w-full max-w-md rounded-[2.5rem] overflow-hidden ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+        <div className="p-5 border-b flex items-center gap-3">
+          <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
+          <div className="flex flex-col"><p className="font-black text-sm">{post.profiles?.display_name}</p><p className="text-gray-400 text-xs font-bold">@{post.profiles?.username}</p></div>
         </div>
         <div className="p-5 max-h-[60vh] overflow-y-auto">
-          {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 shadow-sm" />}
-          <p className={`font-medium leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{post.content}</p>
+          {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
+          <p className="font-medium leading-relaxed">{post.content}</p>
         </div>
       </div>
     </div>
@@ -537,7 +490,7 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, curr
 function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelectedPost, darkMode }) {
   return (
     <div className="animate-in fade-in">
-      <div className={`p-4 sticky top-0 z-10 border-b shadow-sm ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-100'}`}>
+      <div className={`p-4 sticky top-0 z-10 border-b ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-100'}`}>
         <div className="relative">
           <Search className="absolute left-3 top-3 text-gray-400" size={18} />
           <input type="text" placeholder="DISCOVER" className={`w-full rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-black uppercase ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100'}`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
@@ -555,15 +508,12 @@ function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelect
 function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, darkMode }) {
   return (
     <div className="animate-in fade-in">
-      <header className={`p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-100'}`}>GridStream Chat</header>
+      <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10">GridStream Chat</header>
       <div className="p-2">
         {allProfiles.filter(p => p.id !== user.id).map(u => (
-          <div key={u.id} className={`flex items-center gap-4 p-4 rounded-2xl cursor-pointer transition ${darkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-50'}`} onClick={() => setDmTarget(u)}>
-            <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-sm" onClick={(e) => { e.stopPropagation(); openProfile(u.id); }} />
-            <div className={`flex-grow border-b pb-2 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-              <p className="font-bold text-sm">{u.display_name}</p>
-              <p className="text-xs text-blue-500 font-medium mt-1 uppercase tracking-tighter italic">Tap to Stream</p>
-            </div>
+          <div key={u.id} className="flex items-center gap-4 p-4 rounded-2xl cursor-pointer hover:bg-gray-50/10" onClick={() => setDmTarget(u)}>
+            <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover" onClick={(e) => { e.stopPropagation(); openProfile(u.id); }} />
+            <div className="flex-grow border-b pb-2"><p className="font-bold text-sm">{u.display_name}</p><p className="text-xs text-blue-500 font-medium mt-1 italic uppercase">Tap to Stream</p></div>
           </div>
         ))}
       </div>
@@ -594,21 +544,21 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode }) {
   }
   return (
     <div className={`fixed inset-0 z-50 flex flex-col animate-in slide-in-from-right duration-300 ${darkMode ? 'bg-black' : 'bg-[#f8f9fa]'}`}>
-      <header className={`p-4 flex items-center gap-3 border-b shadow-sm sticky top-0 ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
+      <header className={`p-4 flex items-center gap-3 border-b sticky top-0 ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white'}`}>
         <ChevronLeft onClick={() => setDmTarget(null)} className="cursor-pointer" />
         <img src={getAvatar(target.username, target.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
-        <div><p className="font-black text-sm leading-tight">{target.display_name}</p><p className="text-[10px] text-gray-400 font-bold">@{target.username}</p></div>
+        <div><p className="font-black text-sm">{target.display_name}</p><p className="text-[10px] text-gray-400 font-bold">@{target.username}</p></div>
       </header>
       <div className="flex-grow overflow-y-auto p-4 space-y-4">
         {messages.map(m => (
           <div key={m.id} className={`flex ${m.sender_id === currentUser.id ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] p-4 rounded-[1.5rem] text-sm shadow-sm ${m.sender_id === currentUser.id ? 'bg-blue-600 text-white rounded-tr-none' : (darkMode ? 'bg-gray-800 text-white rounded-tl-none' : 'bg-white text-gray-800 rounded-tl-none')}`}>{m.text}</div>
+            <div className={`max-w-[80%] p-4 rounded-[1.5rem] text-sm ${m.sender_id === currentUser.id ? 'bg-blue-600 text-white rounded-tr-none' : (darkMode ? 'bg-gray-800 text-white rounded-tl-none' : 'bg-white text-gray-800 rounded-tl-none')}`}>{m.text}</div>
           </div>
         ))}
         <div ref={scrollRef} />
       </div>
-      <form onSubmit={sendMsg} className={`p-4 border-t flex gap-2 ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-50'}`}>
-        <input type="text" className={`flex-grow p-4 rounded-2xl text-sm outline-none font-medium ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} placeholder="Aa" value={text} onChange={(e) => setText(e.target.value)} />
+      <form onSubmit={sendMsg} className="p-4 border-t flex gap-2">
+        <input type="text" className={`flex-grow p-4 rounded-2xl text-sm outline-none ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} placeholder="Aa" value={text} onChange={(e) => setText(e.target.value)} />
         <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition"><Send size={18}/></button>
       </form>
     </div>
@@ -623,13 +573,10 @@ function AuthScreen({ fetchData, validateProfile }) {
   const [loading, setLoading] = useState(false);
   async function handleAuth(e) {
     e.preventDefault();
-    
-    // 新規登録時のバリデーション
     if (!isLogin) {
       const initialId = displayName.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 1000);
       if (!validateProfile(displayName, initialId)) return;
     }
-
     setLoading(true);
     if (isLogin) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -660,4 +607,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-       }
+                                              }
