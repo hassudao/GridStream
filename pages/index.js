@@ -79,7 +79,24 @@ export default function App() {
     }
   };
 
+  // ユーザー名と表示名のバリデーション関数
+  const validateProfile = (displayName, username) => {
+    if (displayName.length > 20) {
+      alert("表示名は20文字以内で入力してください。");
+      return false;
+    }
+    // 英数字とアンダースコアのみ許可する正規表現
+    const usernameRegex = /^[a-zA-Z0-9_]+$/;
+    if (!usernameRegex.test(username)) {
+      alert("ユーザー名には英数字とアンダースコアのみ使用可能です（ひらがな・カタカナ不可）。");
+      return false;
+    }
+    return true;
+  };
+
   async function handleSaveProfile() {
+    if (!validateProfile(editData.display_name, editData.username)) return;
+
     setUploading(true);
     let { avatar_url, header_url, display_name, username, bio } = editData;
     if (avatarInputRef.current?.files[0]) avatar_url = await uploadToCloudinary(avatarInputRef.current.files[0]);
@@ -93,7 +110,9 @@ export default function App() {
       header_url 
     }).eq('id', user.id);
 
-    if (!error) {
+    if (error) {
+      alert("エラー: ユーザー名が既に使われている可能性があります。");
+    } else {
       const updated = { ...editData, avatar_url, header_url };
       setMyProfile(updated);
       setProfileInfo(updated);
@@ -154,7 +173,7 @@ export default function App() {
 
   const [dmTarget, setDmTarget] = useState(null);
 
-  if (!user) return <AuthScreen fetchData={fetchData} />;
+  if (!user) return <AuthScreen fetchData={fetchData} validateProfile={validateProfile} />;
 
   return (
     <div className={`max-w-md mx-auto min-h-screen pb-20 border-x font-sans relative shadow-2xl overflow-x-hidden transition-colors duration-300 ${darkMode ? 'bg-black text-white border-gray-800' : 'bg-white text-black border-gray-100'}`}>
@@ -246,8 +265,14 @@ export default function App() {
             <div className="mt-4 space-y-4">
               {isEditing ? (
                 <div className="space-y-3 pt-4">
-                  <input className={`w-full p-3 rounded-xl outline-none font-bold text-sm ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={editData.display_name} onChange={(e) => setEditData({...editData, display_name: e.target.value})} placeholder="Display Name" />
-                  <input className={`w-full p-3 rounded-xl outline-none font-bold text-sm ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={editData.username} onChange={(e) => setEditData({...editData, username: e.target.value})} placeholder="Username" />
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Display Name (Max 20)</label>
+                    <input className={`w-full p-3 rounded-xl outline-none font-bold text-sm ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={editData.display_name} onChange={(e) => setEditData({...editData, display_name: e.target.value})} placeholder="Display Name" maxLength={20} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Username (English/Number only)</label>
+                    <input className={`w-full p-3 rounded-xl outline-none font-bold text-sm ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={editData.username} onChange={(e) => setEditData({...editData, username: e.target.value})} placeholder="username_only" />
+                  </div>
                   <textarea className={`w-full p-3 rounded-xl outline-none font-medium text-sm h-20 resize-none ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={editData.bio} onChange={(e) => setEditData({...editData, bio: e.target.value})} placeholder="Bio" />
                 </div>
               ) : (
@@ -590,7 +615,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode }) {
   );
 }
 
-function AuthScreen({ fetchData }) {
+function AuthScreen({ fetchData, validateProfile }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
@@ -598,6 +623,13 @@ function AuthScreen({ fetchData }) {
   const [loading, setLoading] = useState(false);
   async function handleAuth(e) {
     e.preventDefault();
+    
+    // 新規登録時のバリデーション
+    if (!isLogin) {
+      const initialId = displayName.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 1000);
+      if (!validateProfile(displayName, initialId)) return;
+    }
+
     setLoading(true);
     if (isLogin) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -620,7 +652,7 @@ function AuthScreen({ fetchData }) {
       <div className="w-20 h-20 bg-gradient-to-tr from-blue-700 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-pulse"><Zap size={40} color="white" fill="white" /></div>
       <h1 className="text-4xl font-black mb-10 text-blue-700 italic tracking-tighter uppercase">GridStream</h1>
       <form onSubmit={handleAuth} className="w-full max-w-xs space-y-4">
-        {!isLogin && <input type="text" placeholder="DISPLAY NAME" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold text-sm" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />}
+        {!isLogin && <input type="text" placeholder="DISPLAY NAME (MAX 20)" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold text-sm" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required maxLength={20} />}
         <input type="email" placeholder="EMAIL" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold text-sm" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input type="password" placeholder="PASSWORD" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold text-sm" value={password} onChange={(e) => setPassword(e.target.value)} required />
         <button type="submit" className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl shadow-xl uppercase tracking-widest text-xs">{loading ? '...' : (isLogin ? 'Login' : 'Join')}</button>
@@ -628,4 +660,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-        }
+       }
