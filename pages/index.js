@@ -23,8 +23,9 @@ export default function App() {
   const [newPost, setNewPost] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPost, setSelectedPost] = useState(null);
-  const [profileTab, setProfileTab] = useState('grid'); 
+  const [profileTab, setProfileTab] = useState('list'); // デフォルトをリスト（左）に設定
   const [uploading, setUploading] = useState(false);
+  
   const fileInputRef = useRef(null);
   const avatarInputRef = useRef(null);
   const headerInputRef = useRef(null);
@@ -49,10 +50,7 @@ export default function App() {
 
   async function fetchMyProfile(userId) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) {
-      setMyProfile(data);
-      setEditData(data);
-    }
+    if (data) { setMyProfile(data); setEditData(data); }
   }
 
   async function fetchData() {
@@ -114,6 +112,7 @@ export default function App() {
     setStats({ followers: fers || 0, following: fing || 0, isFollowing });
     setView('profile');
     setIsEditing(false);
+    setShowFollowList(null); // モーダルを閉じる
   };
 
   const toggleFollow = async () => {
@@ -133,9 +132,12 @@ export default function App() {
     <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans text-black relative shadow-2xl overflow-x-hidden">
       <script src="https://cdn.tailwindcss.com"></script>
 
+      {/* --- 全画面モーダル系 --- */}
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} />}
+      {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} />}
 
+      {/* --- HOME VIEW --- */}
       {view === 'home' && (
         <div className="animate-in fade-in">
           <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-50 p-4 flex justify-between items-center">
@@ -160,6 +162,7 @@ export default function App() {
         </div>
       )}
 
+      {/* --- PROFILE VIEW --- */}
       {view === 'profile' && profileInfo && (
         <div className="animate-in fade-in pb-10">
           <div className={`h-32 relative overflow-hidden bg-gray-200 ${!profileInfo.header_url && 'bg-gradient-to-br from-blue-700 via-indigo-600 to-cyan-500'}`}>
@@ -186,12 +189,10 @@ export default function App() {
               {user.id === activeProfileId ? (
                 isEditing ? (
                   <div className="flex gap-2">
-                    <button onClick={() => setIsEditing(false)} className="border border-gray-200 rounded-full px-5 py-1.5 text-xs font-black uppercase">Cancel</button>
-                    <button onClick={handleSaveProfile} disabled={uploading} className="bg-blue-600 text-white rounded-full px-5 py-1.5 text-xs font-black uppercase">{uploading ? '...' : 'Save'}</button>
+                    <button onClick={() => setIsEditing(false)} className="border border-gray-200 rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter">Cancel</button>
+                    <button onClick={handleSaveProfile} disabled={uploading} className="bg-blue-600 text-white rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter shadow-md">{uploading ? '...' : 'Save'}</button>
                   </div>
-                ) : (
-                  <button onClick={() => setIsEditing(true)} className="border border-gray-200 rounded-full px-5 py-1.5 text-xs font-black uppercase">Edit Profile</button>
-                )
+                ) : ( <button onClick={() => setIsEditing(true)} className="border border-gray-200 rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter">Edit Profile</button> )
               ) : (
                 <button onClick={toggleFollow} className={`rounded-full px-6 py-1.5 text-xs font-black uppercase transition shadow-md ${stats.isFollowing ? 'bg-gray-100 text-black border border-gray-200' : 'bg-blue-600 text-white'}`}>{stats.isFollowing ? 'Following' : 'Follow'}</button>
               )}
@@ -217,15 +218,22 @@ export default function App() {
           </div>
           {!isEditing && (
             <>
-              <div className="flex border-b border-gray-100 mt-6 sticky top-0 bg-white/95 z-40">
-                <button onClick={() => setProfileTab('grid')} className={`flex-grow py-4 flex justify-center ${profileTab === 'grid' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-300'}`}><Grid size={22}/></button>
-                <button onClick={() => setProfileTab('list')} className={`flex-grow py-4 flex justify-center ${profileTab === 'list' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-300'}`}><List size={22}/></button>
+              {/* 文字のみタブ（左） / 画像付きタブ（右） */}
+              <div className="flex border-b border-gray-100 mt-6 sticky top-0 bg-white/95 z-40 shadow-sm">
+                <button onClick={() => setProfileTab('list')} className={`flex-grow py-4 flex justify-center items-center gap-2 ${profileTab === 'list' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-300'}`}><List size={20}/><span className="text-[10px] font-black uppercase tracking-tighter">Threads</span></button>
+                <button onClick={() => setProfileTab('grid')} className={`flex-grow py-4 flex justify-center items-center gap-2 ${profileTab === 'grid' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-300'}`}><Grid size={20}/><span className="text-[10px] font-black uppercase tracking-tighter">Media</span></button>
               </div>
+              
               <div className={profileTab === 'grid' ? "grid grid-cols-3 gap-[2px]" : "divide-y divide-gray-100"}>
-                {posts.filter(p => p.user_id === activeProfileId).map(post => 
-                  profileTab === 'grid' ? ( post.image_url && <img key={post.id} src={post.image_url} className="aspect-square object-cover" onClick={() => setSelectedPost(post)} /> ) : ( <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} /> )
+                {posts.filter(p => p.user_id === activeProfileId).filter(p => profileTab === 'grid' ? !!p.image_url : !p.image_url).map(post => 
+                  profileTab === 'grid' ? ( 
+                    <img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer hover:brightness-90 transition" onClick={() => setSelectedPost(post)} /> 
+                  ) : ( <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} /> )
                 )}
               </div>
+              {posts.filter(p => p.user_id === activeProfileId).filter(p => profileTab === 'grid' ? !!p.image_url : !p.image_url).length === 0 && (
+                <p className="text-center py-20 text-gray-300 font-bold italic">No posts in this section.</p>
+              )}
             </>
           )}
         </div>
@@ -246,6 +254,27 @@ export default function App() {
 
 // --- SUB-COMPONENTS ---
 
+function PostDetailModal({ post, onClose, getAvatar, openProfile }) {
+  return (
+    <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center p-4">
+      <button onClick={onClose} className="absolute top-4 right-4 text-white p-2"><X size={30}/></button>
+      <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl">
+        <div className="p-4 border-b border-gray-50 flex items-center gap-3">
+          <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover" onClick={() => { openProfile(post.profiles.id); onClose(); }} />
+          <div>
+            <p className="font-black text-sm" onClick={() => { openProfile(post.profiles.id); onClose(); }}>{post.profiles?.display_name}</p>
+            <p className="text-gray-400 text-xs font-bold">@{post.profiles?.username}</p>
+          </div>
+        </div>
+        <div className="p-4 max-h-[70vh] overflow-y-auto">
+          {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
+          <p className="text-gray-800 font-medium leading-relaxed">{post.content}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PostCard({ post, openProfile, getAvatar }) {
   return (
     <article className="p-4 flex gap-3 hover:bg-gray-50 transition">
@@ -257,7 +286,7 @@ function PostCard({ post, openProfile, getAvatar }) {
         </div>
         <p className="text-sm mt-1 text-gray-800 font-medium leading-relaxed">{post.content}</p>
         {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100 shadow-sm" />}
-        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px]"><Heart size={18}/><MessageCircle size={18}/><Share2 size={18}/></div>
+        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px] hover:text-blue-500 cursor-pointer"><Heart size={18}/><MessageCircle size={18}/><Share2 size={18}/></div>
       </div>
     </article>
   );
@@ -267,9 +296,9 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar }) {
   const [list, setList] = useState([]);
   useEffect(() => {
     async function fetchList() {
-      const targetColumn = type === 'followers' ? 'follower_id' : 'following_id';
-      const column = type === 'followers' ? 'following_id' : 'follower_id';
-      const { data } = await supabase.from('follows').select(`profiles:${targetColumn}(*)`).eq(column, userId);
+      const targetCol = type === 'followers' ? 'follower_id' : 'following_id';
+      const sourceCol = type === 'followers' ? 'following_id' : 'follower_id';
+      const { data } = await supabase.from('follows').select(`profiles:${targetCol}(*)`).eq(sourceCol, userId);
       if (data) setList(data.map(item => item.profiles));
     }
     fetchList();
@@ -280,12 +309,12 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar }) {
         <div className="p-6 border-b border-gray-50 flex justify-between items-center"><h3 className="font-black text-lg uppercase tracking-widest text-blue-600">{type}</h3><X onClick={onClose} className="cursor-pointer text-gray-300" /></div>
         <div className="overflow-y-auto p-4 space-y-4">
           {list.map(u => (
-            <div key={u.id} className="flex items-center gap-4 cursor-pointer hover:bg-gray-50 p-2 rounded-2xl transition" onClick={() => { openProfile(u.id); onClose(); }}>
+            <div key={u.id} className="flex items-center gap-4 cursor-pointer hover:bg-gray-50 p-2 rounded-2xl transition" onClick={() => openProfile(u.id)}>
               <img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover shadow-sm" />
               <div><p className="font-black text-sm">{u.display_name}</p><p className="text-gray-400 text-xs font-bold">@{u.username}</p></div>
             </div>
           ))}
-          {list.length === 0 && <p className="text-center text-gray-400 py-20 font-bold italic">Nothing here yet.</p>}
+          {list.length === 0 && <p className="text-center text-gray-400 py-20 font-bold italic">No {type} yet.</p>}
         </div>
       </div>
     </div>
@@ -295,15 +324,15 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar }) {
 function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelectedPost }) {
   return (
     <div className="animate-in fade-in">
-      <div className="p-4 sticky top-0 bg-white/95 z-10 border-b border-gray-100">
+      <div className="p-4 sticky top-0 bg-white/95 z-10 border-b border-gray-100 shadow-sm">
         <div className="relative">
           <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-          <input type="text" placeholder="DISCOVER" className="w-full bg-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-bold" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          <input type="text" placeholder="DISCOVER IN STREAM" className="w-full bg-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-black" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
       </div>
       <div className="grid grid-cols-3 gap-[2px]">
         {posts.filter(p => p.image_url && (p.content.includes(searchQuery) || p.profiles?.username.includes(searchQuery))).map((post) => (
-          <img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer" onClick={() => setSelectedPost(post)} />
+          <img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer hover:opacity-80 transition" onClick={() => setSelectedPost(post)} />
         ))}
       </div>
     </div>
@@ -343,8 +372,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar }) {
     if (data) setMessages(data);
   }
   async function sendMsg(e) {
-    e.preventDefault();
-    if (!text.trim()) return;
+    e.preventDefault(); if (!text.trim()) return;
     const t = text; setText('');
     await supabase.from('messages').insert([{ text: t, sender_id: currentUser.id, receiver_id: target.id }]);
   }
@@ -409,4 +437,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-                                              }
+        }
