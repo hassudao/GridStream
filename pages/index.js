@@ -249,19 +249,25 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar }) {
   useEffect(() => {
     async function fetchList() {
       setLoading(true);
-      // ここが修正ポイント: フォロワーを取得する場合は following_id がターゲット
-      const targetColumn = type === 'followers' ? 'follower_id' : 'following_id';
-      const sourceColumn = type === 'followers' ? 'following_id' : 'follower_id';
-      
-      const { data, error } = await supabase
-        .from('follows')
-        .select(`profiles!follows_${targetColumn}_fkey(*)`) // リレーション名を指定して確実にプロフィールを取得
-        .eq(sourceColumn, userId);
+      // カラム指定: フォロワーを見たいなら、自分がfollowing_idにいて、相手がfollower_idにいるデータを探す
+      const sourceCol = type === 'followers' ? 'following_id' : 'follower_id';
+      const targetCol = type === 'followers' ? 'follower_id' : 'following_id';
 
-      if (data) {
-        setList(data.map(item => item.profiles));
-      } else {
-        console.error(error);
+      // 1. まずフォロー関係のIDリストを取得
+      const { data: followData } = await supabase
+        .from('follows')
+        .select(targetCol)
+        .eq(sourceCol, userId);
+
+      if (followData && followData.length > 0) {
+        const ids = followData.map(f => f[targetCol]);
+        // 2. そのIDリストに基づいてプロフィールを一括取得
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .in('id', ids);
+        
+        if (profiles) setList(profiles);
       }
       setLoading(false);
     }
@@ -270,27 +276,32 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar }) {
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end justify-center animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-md rounded-t-[2.5rem] max-h-[80vh] flex flex-col animate-in slide-in-from-bottom duration-300">
+      <div className="bg-white w-full max-w-md rounded-t-[2.5rem] max-h-[80vh] flex flex-col animate-in slide-in-from-bottom duration-300 shadow-2xl">
         <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-white rounded-t-[2.5rem] sticky top-0">
           <h3 className="font-black text-lg uppercase tracking-widest text-blue-600">{type}</h3>
           <X onClick={onClose} className="cursor-pointer text-gray-300 hover:text-black transition" />
         </div>
         <div className="overflow-y-auto p-4 space-y-2">
           {loading ? (
-             <p className="text-center py-10 animate-pulse font-black text-gray-200">LOADING...</p>
+             <p className="text-center py-10 animate-pulse font-black text-gray-200 uppercase">Searching Stream...</p>
           ) : list.length > 0 ? (
             list.map(u => (
-              <div key={u.id} className="flex items-center gap-4 cursor-pointer hover:bg-gray-50 p-3 rounded-2xl transition" onClick={() => openProfile(u.id)}>
-                <img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover shadow-sm" />
+              <div key={u.id} className="flex items-center gap-4 cursor-pointer hover:bg-gray-50 p-3 rounded-2xl transition group" onClick={() => openProfile(u.id)}>
+                <img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover shadow-sm border border-gray-100" />
                 <div className="flex-grow">
-                  <p className="font-black text-sm">{u.display_name}</p>
+                  <p className="font-black text-sm group-hover:text-blue-600 transition">{u.display_name}</p>
                   <p className="text-gray-400 text-xs font-bold">@{u.username}</p>
                 </div>
-                <ChevronLeft className="text-gray-200 rotate-180" size={16} />
+                <div className="bg-gray-50 p-2 rounded-full group-hover:bg-blue-50 transition">
+                  <ChevronLeft className="text-gray-300 rotate-180 group-hover:text-blue-500" size={16} />
+                </div>
               </div>
             ))
           ) : (
-            <p className="text-center text-gray-400 py-20 font-bold italic">No {type} found.</p>
+            <div className="py-20 text-center">
+              <p className="text-gray-300 font-black italic text-xl uppercase tracking-tighter opacity-50">No {type} found.</p>
+              <p className="text-gray-400 text-xs font-bold mt-2">The stream is empty here.</p>
+            </div>
           )}
         </div>
       </div>
@@ -298,6 +309,8 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar }) {
   );
 }
 
+// 他のサブコンポーネント (PostDetailModal, PostCard, SearchView, MessagesList, DMScreen, AuthScreen) は前回と同じため省略（コード内には含まれています）
+// ... (以下、前の回答と同じサブコンポーネントを繋げてください)
 function PostDetailModal({ post, onClose, getAvatar, openProfile }) {
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
@@ -455,4 +468,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-                      }
+       }
