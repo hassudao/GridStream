@@ -55,17 +55,45 @@ export default function App() {
     if (data) { setMyProfile(data); setEditData(data); }
   }
 
+  // --- 投稿といいね情報を取得 ---
   async function fetchData() {
     const { data: postsData, error } = await supabase
       .from('posts')
-      .select('*, profiles(id, username, display_name, avatar_url)')
+      .select(`
+        *,
+        profiles(id, username, display_name, avatar_url),
+        likes(user_id)
+      `)
       .order('created_at', { ascending: false });
     
     if (error) console.error("Fetch posts error:", error);
-    if (postsData) setPosts(postsData);
+    if (postsData) {
+      // いいね数をカウントし、自分がいいねしたかを判定
+      const formattedPosts = postsData.map(post => ({
+        ...post,
+        like_count: post.likes?.length || 0,
+        is_liked: post.likes?.some(l => l.user_id === user?.id)
+      }));
+      setPosts(formattedPosts);
+    }
     
     const { data: profData } = await supabase.from('profiles').select('*');
     if (profData) setAllProfiles(profData);
+  }
+
+  // --- いいねのトグル機能 ---
+  async function toggleLike(postId, isLiked) {
+    if (!user) return;
+
+    if (isLiked) {
+      // 解除
+      await supabase.from('likes').delete().eq('post_id', postId).eq('user_id', user.id);
+    } else {
+      // 登録
+      await supabase.from('likes').insert([{ post_id: postId, user_id: user.id }]);
+    }
+    // 状態をリロードせずに更新
+    fetchData();
   }
 
   async function uploadToCloudinary(file) {
@@ -185,9 +213,7 @@ export default function App() {
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
-      {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} currentUser={user} darkMode={darkMode} />}
-      
-      {/* 修正版 設定画面 */}
+      {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
       {view === 'home' && (
@@ -212,7 +238,7 @@ export default function App() {
           </form>
           <div className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
             {posts.map(post => (
-              <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onDelete={handleDeletePost} currentUser={user} darkMode={darkMode} />
+              <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} />
             ))}
           </div>
         </div>
@@ -297,7 +323,7 @@ export default function App() {
                   profileTab === 'grid' ? ( 
                     <img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer hover:brightness-90 transition" onClick={() => setSelectedPost(post)} /> 
                   ) : ( 
-                    <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onDelete={handleDeletePost} currentUser={user} darkMode={darkMode} /> 
+                    <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} /> 
                   )
                 ))}
               </div>
@@ -319,7 +345,6 @@ export default function App() {
   );
 }
 
-// --- リッチなUIに戻したSettingsScreen ---
 function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
   const [loading, setLoading] = useState(false);
   const [newEmail, setNewEmail] = useState(user.email);
@@ -379,8 +404,6 @@ function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
   );
 }
 
-// (他のサブコンポーネント: FollowListModal, PostCard, PostDetailModal, SearchView, MessagesList, DMScreen, AuthScreen は前回と同じ内容)
-// ...スペースの都合上、上記と重複するコンポーネントコードは維持しつつ表示を継続します
 function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMode }) {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -416,7 +439,8 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
   );
 }
 
-function PostCard({ post, openProfile, getAvatar, onDelete, currentUser, darkMode }) {
+// --- いいね対応版 PostCard ---
+function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser, darkMode }) {
   const isMyPost = currentUser && post.user_id === currentUser.id;
   return (
     <article className={`p-4 flex gap-3 hover:bg-gray-50/5 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
@@ -431,13 +455,25 @@ function PostCard({ post, openProfile, getAvatar, onDelete, currentUser, darkMod
         </div>
         <p className={`text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{post.content}</p>
         {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100" />}
-        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px]"><Heart size={18} /><MessageCircle size={18} /><Share2 size={18} /></div>
+        
+        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px] items-center">
+          <button 
+            onClick={() => onLike(post.id, post.is_liked)} 
+            className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'hover:text-red-500'}`}
+          >
+            <Heart size={18} fill={post.is_liked ? "currentColor" : "none"} />
+            <span className="text-xs font-black">{post.like_count || ''}</span>
+          </button>
+          <MessageCircle size={18} className="hover:text-blue-500 transition" />
+          <Share2 size={18} className="hover:text-green-500 transition" />
+        </div>
       </div>
     </article>
   );
 }
 
-function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, currentUser, darkMode }) {
+// --- いいね対応版 PostDetailModal ---
+function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLike, currentUser, darkMode }) {
   const isMyPost = currentUser && post.user_id === currentUser.id;
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4">
@@ -452,7 +488,16 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, curr
         </div>
         <div className="p-5 max-h-[60vh] overflow-y-auto">
           {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
-          <p className="font-medium leading-relaxed">{post.content}</p>
+          <p className="font-medium leading-relaxed mb-4">{post.content}</p>
+          <div className="flex items-center gap-2">
+             <button 
+               onClick={() => onLike(post.id, post.is_liked)} 
+               className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500' : 'text-gray-400'}`}
+             >
+               <Heart size={20} fill={post.is_liked ? "currentColor" : "none"} />
+               <span className="font-black">{post.like_count || 0} Likes</span>
+             </button>
+          </div>
         </div>
       </div>
     </div>
@@ -576,4 +621,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-                                              }
+}
