@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, Check, AtSign, Zap, LogOut, Mail, Lock, MoreHorizontal, Settings, Save, Moon, Sun, AlertCircle } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, Check, AtSign, Zap, LogOut, Mail, Lock, MoreHorizontal, Settings, Save, Moon, Sun, AlertCircle, Trash2 } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -116,6 +116,16 @@ export default function App() {
     setUploading(false);
   }
 
+  async function handleDeletePost(postId) {
+    if (!window.confirm("この投稿を削除しますか？")) return;
+    const { error } = await supabase.from('posts').delete().eq('id', postId);
+    if (error) alert(error.message);
+    else {
+      setPosts(posts.filter(p => p.id !== postId));
+      if (selectedPost?.id === postId) setSelectedPost(null);
+    }
+  }
+
   const openProfile = async (userId) => {
     setActiveProfileId(userId);
     setShowFollowList(null); 
@@ -152,7 +162,7 @@ export default function App() {
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
-      {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} darkMode={darkMode} />}
+      {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} currentUser={user} darkMode={darkMode} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
       {view === 'home' && (
@@ -175,7 +185,19 @@ export default function App() {
               </button>
             </div>
           </form>
-          <div className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>{posts.map(post => <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />)}</div>
+          <div className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
+            {posts.map(post => (
+              <PostCard 
+                key={post.id} 
+                post={post} 
+                openProfile={openProfile} 
+                getAvatar={getAvatar} 
+                onDelete={handleDeletePost} 
+                currentUser={user}
+                darkMode={darkMode} 
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -251,7 +273,17 @@ export default function App() {
                 {posts.filter(p => p.user_id === activeProfileId).filter(p => profileTab === 'grid' ? !!p.image_url : true).map(post => 
                   profileTab === 'grid' ? ( 
                     <img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer hover:brightness-90 transition" onClick={() => setSelectedPost(post)} /> 
-                  ) : ( <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} /> )
+                  ) : ( 
+                    <PostCard 
+                      key={post.id} 
+                      post={post} 
+                      openProfile={openProfile} 
+                      getAvatar={getAvatar} 
+                      onDelete={handleDeletePost} 
+                      currentUser={user}
+                      darkMode={darkMode} 
+                    /> 
+                  )
                 )}
               </div>
             </>
@@ -423,14 +455,23 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
   );
 }
 
-function PostCard({ post, openProfile, getAvatar, darkMode }) {
+function PostCard({ post, openProfile, getAvatar, onDelete, currentUser, darkMode }) {
+  const isMyPost = currentUser && post.user_id === currentUser.id;
+
   return (
     <article className={`p-4 flex gap-3 hover:bg-gray-50/5 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
       <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover shadow-sm" onClick={() => openProfile(post.profiles.id)} />
       <div className="flex-grow min-w-0">
-        <div className="flex items-center gap-1 cursor-pointer" onClick={() => openProfile(post.profiles.id)}>
-          <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
-          <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1 cursor-pointer" onClick={() => openProfile(post.profiles.id)}>
+            <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
+            <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
+          </div>
+          {isMyPost && (
+            <button onClick={() => onDelete(post.id)} className="text-gray-400 hover:text-red-500 transition p-1">
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
         <p className={`text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{post.content}</p>
         {post.image_url && <img src={post.image_url} className={`mt-3 rounded-2xl w-full max-h-80 object-cover border shadow-sm ${darkMode ? 'border-gray-800' : 'border-gray-100'}`} />}
@@ -440,10 +481,17 @@ function PostCard({ post, openProfile, getAvatar, darkMode }) {
   );
 }
 
-function PostDetailModal({ post, onClose, getAvatar, openProfile, darkMode }) {
+function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, currentUser, darkMode }) {
+  const isMyPost = currentUser && post.user_id === currentUser.id;
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4">
-      <button onClick={onClose} className="absolute top-6 right-6 text-white p-2 hover:bg-white/10 rounded-full transition"><X size={28}/></button>
+      <div className="absolute top-6 right-6 flex gap-4">
+        {isMyPost && (
+          <button onClick={() => { onDelete(post.id); onClose(); }} className="text-white p-2 hover:bg-red-500/20 rounded-full transition"><Trash2 size={24}/></button>
+        )}
+        <button onClick={onClose} className="text-white p-2 hover:bg-white/10 rounded-full transition"><X size={28}/></button>
+      </div>
       <div className={`w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
         <div className={`p-5 border-b flex items-center gap-3 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
           <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover cursor-pointer" onClick={() => { openProfile(post.profiles.id); onClose(); }} />
@@ -580,4 +628,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-       }
+}
