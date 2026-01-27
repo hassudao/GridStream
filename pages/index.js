@@ -56,13 +56,12 @@ export default function App() {
   }
 
   async function fetchData() {
-    console.log("Fetching latest posts...");
     const { data: postsData, error } = await supabase
       .from('posts')
       .select('*, profiles(id, username, display_name, avatar_url)')
       .order('created_at', { ascending: false });
     
-    if (error) console.error("Fetch error:", error);
+    if (error) console.error("Fetch posts error:", error);
     if (postsData) setPosts(postsData);
     
     const { data: profData } = await supabase.from('profiles').select('*');
@@ -133,42 +132,21 @@ export default function App() {
     let imageUrl = null;
     if (fileInputRef.current?.files[0]) imageUrl = await uploadToCloudinary(fileInputRef.current.files[0]);
     const { error } = await supabase.from('posts').insert([{ content: newPost, user_id: user.id, image_url: imageUrl }]);
-    if (error) alert("投稿失敗: " + error.message);
+    if (error) alert("投稿に失敗しました: " + error.message);
     setNewPost('');
     if (fileInputRef.current) fileInputRef.current.value = "";
-    fetchData(); // 再読み込み
+    fetchData();
     setUploading(false);
   }
 
-  // --- 修正版：削除機能 ---
   async function handleDeletePost(postId) {
-    if (!window.confirm("この投稿をDBから完全に削除します。よろしいですか？")) return;
-    
-    console.log("Attempting to delete post ID:", postId);
-    
-    // Supabaseへの削除リクエスト
-    const { error, count } = await supabase
-      .from('posts')
-      .delete()
-      .eq('id', postId)
-      .eq('user_id', user.id); // 自分が作成者であることを確認
-
-    if (error) {
-      console.error("Supabase Delete Error:", error.message);
-      alert("削除に失敗しました: " + error.message);
-      return;
+    if (!window.confirm("この投稿を永久に削除しますか？")) return;
+    const { error } = await supabase.from('posts').delete().eq('id', postId).eq('user_id', user.id);
+    if (error) alert("削除に失敗しました: " + error.message);
+    else {
+      setPosts(prev => prev.filter(p => p.id !== postId));
+      if (selectedPost?.id === postId) setSelectedPost(null);
     }
-
-    // 削除が成功したかどうかの確認
-    console.log("Delete response error status:", error);
-    
-    // フロントエンドの状態を即座に更新
-    setPosts(prev => prev.filter(p => p.id !== postId));
-    if (selectedPost?.id === postId) setSelectedPost(null);
-    
-    // 念のためDBと再同期
-    fetchData();
-    alert("削除が完了しました。");
   }
 
   const openProfile = async (userId) => {
@@ -208,6 +186,8 @@ export default function App() {
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
       {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} currentUser={user} darkMode={darkMode} />}
+      
+      {/* 修正版 設定画面 */}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
       {view === 'home' && (
@@ -232,15 +212,7 @@ export default function App() {
           </form>
           <div className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
             {posts.map(post => (
-              <PostCard 
-                key={post.id} 
-                post={post} 
-                openProfile={openProfile} 
-                getAvatar={getAvatar} 
-                onDelete={handleDeletePost} 
-                currentUser={user}
-                darkMode={darkMode} 
-              />
+              <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onDelete={handleDeletePost} currentUser={user} darkMode={darkMode} />
             ))}
           </div>
         </div>
@@ -292,12 +264,12 @@ export default function App() {
               {isEditing ? (
                 <div className="space-y-3 pt-4">
                   <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Display Name (Max 20)</label>
-                    <input className={`w-full p-3 rounded-xl outline-none font-bold text-sm ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={editData.display_name} onChange={(e) => setEditData({...editData, display_name: e.target.value})} placeholder="Display Name" maxLength={20} />
+                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Display Name</label>
+                    <input className={`w-full p-3 rounded-xl outline-none font-bold text-sm ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={editData.display_name} onChange={(e) => setEditData({...editData, display_name: e.target.value})} maxLength={20} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Username (English/Number only)</label>
-                    <input className={`w-full p-3 rounded-xl outline-none font-bold text-sm ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={editData.username} onChange={(e) => setEditData({...editData, username: e.target.value})} placeholder="username_only" />
+                    <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Username</label>
+                    <input className={`w-full p-3 rounded-xl outline-none font-bold text-sm ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={editData.username} onChange={(e) => setEditData({...editData, username: e.target.value})} />
                   </div>
                   <textarea className={`w-full p-3 rounded-xl outline-none font-medium text-sm h-20 resize-none ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={editData.bio} onChange={(e) => setEditData({...editData, bio: e.target.value})} placeholder="Bio" />
                 </div>
@@ -321,21 +293,13 @@ export default function App() {
                 <button onClick={() => setProfileTab('grid')} className={`flex-grow py-4 flex justify-center items-center gap-2 ${profileTab === 'grid' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-300'}`}><Grid size={20}/><span className="text-[10px] font-black uppercase tracking-tighter">Media</span></button>
               </div>
               <div className={profileTab === 'grid' ? "grid grid-cols-3 gap-[2px]" : `divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
-                {posts.filter(p => p.user_id === activeProfileId).filter(p => profileTab === 'grid' ? !!p.image_url : true).map(post => 
+                {posts.filter(p => p.user_id === activeProfileId).filter(p => profileTab === 'grid' ? !!p.image_url : true).map(post => (
                   profileTab === 'grid' ? ( 
                     <img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer hover:brightness-90 transition" onClick={() => setSelectedPost(post)} /> 
                   ) : ( 
-                    <PostCard 
-                      key={post.id} 
-                      post={post} 
-                      openProfile={openProfile} 
-                      getAvatar={getAvatar} 
-                      onDelete={handleDeletePost} 
-                      currentUser={user}
-                      darkMode={darkMode} 
-                    /> 
+                    <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onDelete={handleDeletePost} currentUser={user} darkMode={darkMode} /> 
                   )
-                )}
+                ))}
               </div>
             </>
           )}
@@ -355,41 +319,68 @@ export default function App() {
   );
 }
 
-// (以下、Sub-Componentsは変更なしですがフルコード表示の指示に従い含めています)
+// --- リッチなUIに戻したSettingsScreen ---
 function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
   const [loading, setLoading] = useState(false);
   const [newEmail, setNewEmail] = useState(user.email);
   const [newPassword, setNewPassword] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
+
   const handleUpdateAccount = async (e) => {
-    e.preventDefault(); setLoading(true); setMessage({ type: '', text: '' });
-    const updates = {}; if (newEmail !== user.email) updates.email = newEmail; if (newPassword) updates.password = newPassword;
+    e.preventDefault();
+    setLoading(true);
+    setMessage({ type: '', text: '' });
+    const updates = {};
+    if (newEmail !== user.email) updates.email = newEmail;
+    if (newPassword) updates.password = newPassword;
     if (Object.keys(updates).length === 0) { setLoading(false); return; }
     const { error } = await supabase.auth.updateUser(updates);
     if (error) setMessage({ type: 'error', text: error.message });
     else { setMessage({ type: 'success', text: 'Account updated!' }); setNewPassword(''); }
     setLoading(false);
   };
+
   const handleLogout = () => { supabase.auth.signOut(); onClose(); };
+
   return (
-    <div className={`fixed inset-0 z-[100] overflow-y-auto ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
-      <header className="p-4 border-b flex items-center gap-4"><ChevronLeft onClick={onClose} className="cursor-pointer" /><h2 className="font-black">Settings</h2></header>
-      <div className="p-4 space-y-6">
-        <form onSubmit={handleUpdateAccount} className="space-y-4">
-          {message.text && <div className={`p-4 rounded-xl text-xs font-bold ${message.type === 'error' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}>{message.text}</div>}
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase text-gray-400">Email</label>
-            <input className="w-full p-4 rounded-xl bg-gray-100 dark:bg-gray-900 outline-none" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
-          </div>
-          <button className="w-full bg-blue-600 text-white font-black py-4 rounded-xl uppercase text-xs">Update</button>
+    <div className={`fixed inset-0 z-[100] animate-in slide-in-from-bottom duration-300 overflow-y-auto ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
+      <header className={`p-4 border-b flex items-center gap-4 sticky top-0 z-10 ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-100'}`}>
+        <ChevronLeft onClick={onClose} className="cursor-pointer" />
+        <h2 className="font-black uppercase tracking-tighter">Settings</h2>
+      </header>
+      <div className="p-4 space-y-8 pb-20">
+        <form onSubmit={handleUpdateAccount} className="space-y-6">
+          <section>
+            <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-4">Account Security</h3>
+            {message.text && <div className={`p-4 rounded-2xl mb-4 flex items-center gap-3 text-xs font-bold ${message.type === 'error' ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}><AlertCircle size={16} /> {message.text}</div>}
+            <div className="space-y-3">
+              <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Email Address</label>
+                <div className="flex items-center gap-3"><Mail size={18} className="text-blue-500"/><input type="email" className="bg-transparent w-full outline-none text-sm font-bold" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} /></div>
+              </div>
+              <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">New Password</label>
+                <div className="flex items-center gap-3"><Lock size={18} className="text-blue-500"/><input type="password" placeholder="••••••••" className="bg-transparent w-full outline-none text-sm font-bold" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} /></div>
+              </div>
+              <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg uppercase text-xs tracking-widest active:scale-[0.98] transition-transform">Update Account</button>
+            </div>
+          </section>
         </form>
-        <button onClick={() => setDarkMode(!darkMode)} className="w-full flex justify-between p-4 rounded-xl bg-gray-100 dark:bg-gray-900 font-bold">{darkMode ? 'Light Mode' : 'Dark Mode'}</button>
-        <button onClick={handleLogout} className="w-full p-4 rounded-xl bg-red-50 text-red-500 font-black uppercase text-xs">Logout</button>
+        <section>
+          <h3 className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-4">Appearance</h3>
+          <button onClick={() => setDarkMode(!darkMode)} className={`w-full flex justify-between items-center p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+            <div className="flex items-center gap-3">{darkMode ? <Moon size={18} className="text-blue-400"/> : <Sun size={18} className="text-orange-400"/>}<span className="text-sm font-bold">Dark Mode</span></div>
+            <div className={`w-10 h-6 rounded-full relative transition-colors ${darkMode ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${darkMode ? 'right-1' : 'left-1'}`} /></div>
+          </button>
+        </section>
+        <section><button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-red-50 text-red-500 font-black uppercase text-xs tracking-widest hover:bg-red-100 transition-colors">Logout from Beta</button></section>
       </div>
     </div>
   );
 }
 
+// (他のサブコンポーネント: FollowListModal, PostCard, PostDetailModal, SearchView, MessagesList, DMScreen, AuthScreen は前回と同じ内容)
+// ...スペースの都合上、上記と重複するコンポーネントコードは維持しつつ表示を継続します
 function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMode }) {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -411,9 +402,9 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end justify-center">
       <div className={`w-full max-w-md rounded-t-[2.5rem] max-h-[80vh] flex flex-col shadow-2xl ${darkMode ? 'bg-black' : 'bg-white'}`}>
-        <div className="p-6 border-b flex justify-between items-center"><h3 className="font-black text-blue-600 uppercase">{type}</h3><X onClick={onClose} className="cursor-pointer" /></div>
+        <div className={`p-6 border-b flex justify-between items-center rounded-t-[2.5rem] ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}><h3 className="font-black text-lg uppercase text-blue-600">{type}</h3><X onClick={onClose} className="cursor-pointer" /></div>
         <div className="overflow-y-auto p-4 space-y-2">
-          {list.map(u => (
+          {loading ? <p className="text-center py-10 animate-pulse font-black text-gray-500 uppercase">Searching...</p> : list.map(u => (
             <div key={u.id} className="flex items-center gap-4 cursor-pointer p-3 rounded-2xl hover:bg-gray-50/10" onClick={() => openProfile(u.id)}>
               <img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover" />
               <div className="flex-grow"><p className="font-black text-sm">{u.display_name}</p><p className="text-gray-400 text-xs font-bold">@{u.username}</p></div>
@@ -436,11 +427,7 @@ function PostCard({ post, openProfile, getAvatar, onDelete, currentUser, darkMod
             <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
             <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
           </div>
-          {isMyPost && (
-            <button onClick={() => onDelete(post.id)} className="text-gray-300 hover:text-red-500 transition p-1 ml-2">
-              <Trash2 size={16} />
-            </button>
-          )}
+          {isMyPost && <button onClick={() => onDelete(post.id)} className="text-gray-300 hover:text-red-500 transition p-1 ml-2"><Trash2 size={16} /></button>}
         </div>
         <p className={`text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{post.content}</p>
         {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100" />}
@@ -476,10 +463,7 @@ function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelect
   return (
     <div className="animate-in fade-in">
       <div className={`p-4 sticky top-0 z-10 border-b ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-100'}`}>
-        <div className="relative">
-          <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-          <input type="text" placeholder="DISCOVER" className={`w-full rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-black uppercase ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100'}`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-        </div>
+        <div className="relative"><Search className="absolute left-3 top-3 text-gray-400" size={18} /><input type="text" placeholder="DISCOVER" className={`w-full rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-black uppercase ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100'}`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
       </div>
       <div className="grid grid-cols-3 gap-[2px]">
         {posts.filter(p => p.image_url && (p.content.includes(searchQuery) || p.profiles?.username.includes(searchQuery))).map((post) => (
@@ -592,4 +576,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-       }
+                                              }
