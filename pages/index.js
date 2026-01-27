@@ -11,11 +11,13 @@ export default function App() {
   const [allProfiles, setAllProfiles] = useState([]);
   const [user, setUser] = useState(null);
   
+  // プロフィール表示・フォロー管理
   const [activeProfileId, setActiveProfileId] = useState(null); 
   const [profileInfo, setProfileInfo] = useState(null); 
   const [stats, setStats] = useState({ followers: 0, following: 0, isFollowing: false });
-  const [showFollowList, setShowFollowList] = useState(null); 
+  const [showFollowList, setShowFollowList] = useState(null); // 'followers' or 'following'
 
+  // 編集用
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({ display_name: '', username: '', bio: '', avatar_url: '', header_url: '' });
   const [myProfile, setMyProfile] = useState({ username: '', display_name: '', bio: '', avatar_url: '', header_url: '' });
@@ -23,7 +25,7 @@ export default function App() {
   const [newPost, setNewPost] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPost, setSelectedPost] = useState(null);
-  const [profileTab, setProfileTab] = useState('list'); // デフォルトをリスト（左）に設定
+  const [profileTab, setProfileTab] = useState('list'); 
   const [uploading, setUploading] = useState(false);
   
   const fileInputRef = useRef(null);
@@ -100,10 +102,14 @@ export default function App() {
 
   const openProfile = async (userId) => {
     setActiveProfileId(userId);
+    setShowFollowList(null); // モーダルを閉じる
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
     setProfileInfo(profile);
+    
+    // フォロー・フォロワー数取得
     const { count: fers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userId);
     const { count: fing } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId);
+    
     let isFollowing = false;
     if (user && user.id !== userId) {
       const { data } = await supabase.from('follows').select('*').eq('follower_id', user.id).eq('following_id', userId).single();
@@ -112,7 +118,6 @@ export default function App() {
     setStats({ followers: fers || 0, following: fing || 0, isFollowing });
     setView('profile');
     setIsEditing(false);
-    setShowFollowList(null); // モーダルを閉じる
   };
 
   const toggleFollow = async () => {
@@ -132,12 +137,12 @@ export default function App() {
     <div className="max-w-md mx-auto bg-white min-h-screen pb-20 border-x border-gray-100 font-sans text-black relative shadow-2xl overflow-x-hidden">
       <script src="https://cdn.tailwindcss.com"></script>
 
-      {/* --- 全画面モーダル系 --- */}
+      {/* --- モーダル・全画面系 --- */}
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} />}
       {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} />}
 
-      {/* --- HOME VIEW --- */}
+      {/* --- HOME --- */}
       {view === 'home' && (
         <div className="animate-in fade-in">
           <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-50 p-4 flex justify-between items-center">
@@ -149,7 +154,7 @@ export default function App() {
           <form onSubmit={handlePost} className="p-4 border-b border-gray-100 bg-white">
             <div className="flex gap-3">
               <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-10 h-10 rounded-full object-cover shadow-sm" onClick={() => openProfile(user.id)} />
-              <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent" placeholder="今、何を考えてる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
+              <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent font-medium" placeholder="今、何を考えてる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
             </div>
             <div className="flex justify-between items-center pl-12 mt-2">
               <label className="cursor-pointer text-blue-500 hover:bg-blue-50 p-2 rounded-full transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
@@ -162,7 +167,7 @@ export default function App() {
         </div>
       )}
 
-      {/* --- PROFILE VIEW --- */}
+      {/* --- PROFILE --- */}
       {view === 'profile' && profileInfo && (
         <div className="animate-in fade-in pb-10">
           <div className={`h-32 relative overflow-hidden bg-gray-200 ${!profileInfo.header_url && 'bg-gradient-to-br from-blue-700 via-indigo-600 to-cyan-500'}`}>
@@ -174,6 +179,7 @@ export default function App() {
             )}
             {!isEditing && <button onClick={() => setView('home')} className="absolute top-4 left-4 bg-black/20 backdrop-blur-md p-2 rounded-full text-white"><ChevronLeft size={20}/></button>}
           </div>
+
           <div className="px-4 relative">
             <div className="absolute -top-12 left-4">
               <div className="relative">
@@ -209,30 +215,31 @@ export default function App() {
                   <div><h2 className="text-2xl font-black tracking-tighter">{profileInfo.display_name}</h2><p className="text-gray-400 text-sm font-bold">@{profileInfo.username}</p></div>
                   <p className="text-[15px] font-medium leading-relaxed">{profileInfo.bio || 'GridStream member.'}</p>
                   <div className="flex gap-6 pt-1">
-                    <button onClick={() => setShowFollowList('following')} className="hover:opacity-60 flex gap-1.5 items-center"><span className="font-black text-lg">{stats.following}</span><span className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Following</span></button>
-                    <button onClick={() => setShowFollowList('followers')} className="hover:opacity-60 flex gap-1.5 items-center"><span className="font-black text-lg">{stats.followers}</span><span className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Followers</span></button>
+                    <button onClick={() => setShowFollowList('following')} className="hover:opacity-60 transition flex gap-1.5 items-center"><span className="font-black text-lg">{stats.following}</span><span className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Following</span></button>
+                    <button onClick={() => setShowFollowList('followers')} className="hover:opacity-60 transition flex gap-1.5 items-center"><span className="font-black text-lg">{stats.followers}</span><span className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Followers</span></button>
                   </div>
                 </div>
               )}
             </div>
           </div>
+          
           {!isEditing && (
             <>
-              {/* 文字のみタブ（左） / 画像付きタブ（右） */}
+              {/* タブ切り替え */}
               <div className="flex border-b border-gray-100 mt-6 sticky top-0 bg-white/95 z-40 shadow-sm">
                 <button onClick={() => setProfileTab('list')} className={`flex-grow py-4 flex justify-center items-center gap-2 ${profileTab === 'list' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-300'}`}><List size={20}/><span className="text-[10px] font-black uppercase tracking-tighter">Threads</span></button>
                 <button onClick={() => setProfileTab('grid')} className={`flex-grow py-4 flex justify-center items-center gap-2 ${profileTab === 'grid' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-300'}`}><Grid size={20}/><span className="text-[10px] font-black uppercase tracking-tighter">Media</span></button>
               </div>
               
               <div className={profileTab === 'grid' ? "grid grid-cols-3 gap-[2px]" : "divide-y divide-gray-100"}>
-                {posts.filter(p => p.user_id === activeProfileId).filter(p => profileTab === 'grid' ? !!p.image_url : !p.image_url).map(post => 
+                {posts.filter(p => p.user_id === activeProfileId).filter(p => profileTab === 'grid' ? !!p.image_url : true).map(post => 
                   profileTab === 'grid' ? ( 
                     <img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer hover:brightness-90 transition" onClick={() => setSelectedPost(post)} /> 
                   ) : ( <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} /> )
                 )}
               </div>
-              {posts.filter(p => p.user_id === activeProfileId).filter(p => profileTab === 'grid' ? !!p.image_url : !p.image_url).length === 0 && (
-                <p className="text-center py-20 text-gray-300 font-bold italic">No posts in this section.</p>
+              {posts.filter(p => p.user_id === activeProfileId).filter(p => profileTab === 'grid' ? !!p.image_url : true).length === 0 && (
+                <p className="text-center py-20 text-gray-300 font-bold italic">No streams yet.</p>
               )}
             </>
           )}
@@ -252,23 +259,23 @@ export default function App() {
   );
 }
 
-// --- SUB-COMPONENTS ---
+// --- サブコンポーネント群 ---
 
 function PostDetailModal({ post, onClose, getAvatar, openProfile }) {
   return (
-    <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center p-4">
-      <button onClick={onClose} className="absolute top-4 right-4 text-white p-2"><X size={30}/></button>
-      <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl">
-        <div className="p-4 border-b border-gray-50 flex items-center gap-3">
-          <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover" onClick={() => { openProfile(post.profiles.id); onClose(); }} />
+    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+      <button onClick={onClose} className="absolute top-6 right-6 text-white p-2 hover:bg-white/10 rounded-full transition"><X size={28}/></button>
+      <div className="bg-white w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+        <div className="p-5 border-b border-gray-50 flex items-center gap-3">
+          <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover cursor-pointer" onClick={() => { openProfile(post.profiles.id); onClose(); }} />
           <div>
-            <p className="font-black text-sm" onClick={() => { openProfile(post.profiles.id); onClose(); }}>{post.profiles?.display_name}</p>
+            <p className="font-black text-sm cursor-pointer" onClick={() => { openProfile(post.profiles.id); onClose(); }}>{post.profiles?.display_name}</p>
             <p className="text-gray-400 text-xs font-bold">@{post.profiles?.username}</p>
           </div>
         </div>
-        <div className="p-4 max-h-[70vh] overflow-y-auto">
-          {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
-          <p className="text-gray-800 font-medium leading-relaxed">{post.content}</p>
+        <div className="p-5 max-h-[60vh] overflow-y-auto">
+          {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border border-gray-50 shadow-sm" />}
+          <p className="text-gray-800 font-medium leading-relaxed whitespace-pre-wrap">{post.content}</p>
         </div>
       </div>
     </div>
@@ -277,16 +284,16 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile }) {
 
 function PostCard({ post, openProfile, getAvatar }) {
   return (
-    <article className="p-4 flex gap-3 hover:bg-gray-50 transition">
+    <article className="p-4 flex gap-3 hover:bg-gray-50/50 transition border-b border-gray-50 last:border-0">
       <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover shadow-sm" onClick={() => openProfile(post.profiles.id)} />
       <div className="flex-grow min-w-0">
         <div className="flex items-center gap-1 cursor-pointer" onClick={() => openProfile(post.profiles.id)}>
           <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
           <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
         </div>
-        <p className="text-sm mt-1 text-gray-800 font-medium leading-relaxed">{post.content}</p>
+        <p className="text-[15px] mt-1 text-gray-800 font-medium leading-relaxed whitespace-pre-wrap">{post.content}</p>
         {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100 shadow-sm" />}
-        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px] hover:text-blue-500 cursor-pointer"><Heart size={18}/><MessageCircle size={18}/><Share2 size={18}/></div>
+        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px]"><Heart size={18} className="hover:text-red-500 transition cursor-pointer"/><MessageCircle size={18} className="hover:text-blue-500 transition cursor-pointer"/><Share2 size={18} className="hover:text-green-500 transition cursor-pointer"/></div>
       </div>
     </article>
   );
@@ -294,27 +301,44 @@ function PostCard({ post, openProfile, getAvatar }) {
 
 function FollowListModal({ type, userId, onClose, openProfile, getAvatar }) {
   const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     async function fetchList() {
+      setLoading(true);
       const targetCol = type === 'followers' ? 'follower_id' : 'following_id';
       const sourceCol = type === 'followers' ? 'following_id' : 'follower_id';
-      const { data } = await supabase.from('follows').select(`profiles:${targetCol}(*)`).eq(sourceCol, userId);
+      const { data, error } = await supabase.from('follows').select(`profiles:${targetCol}(*)`).eq(sourceCol, userId);
       if (data) setList(data.map(item => item.profiles));
+      setLoading(false);
     }
-    fetchList();
+    if (userId) fetchList();
   }, [type, userId]);
+
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end justify-center">
-      <div className="bg-white w-full max-w-md rounded-t-[2.5rem] max-h-[70vh] flex flex-col animate-in slide-in-from-bottom duration-300">
-        <div className="p-6 border-b border-gray-50 flex justify-between items-center"><h3 className="font-black text-lg uppercase tracking-widest text-blue-600">{type}</h3><X onClick={onClose} className="cursor-pointer text-gray-300" /></div>
-        <div className="overflow-y-auto p-4 space-y-4">
-          {list.map(u => (
-            <div key={u.id} className="flex items-center gap-4 cursor-pointer hover:bg-gray-50 p-2 rounded-2xl transition" onClick={() => openProfile(u.id)}>
-              <img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover shadow-sm" />
-              <div><p className="font-black text-sm">{u.display_name}</p><p className="text-gray-400 text-xs font-bold">@{u.username}</p></div>
-            </div>
-          ))}
-          {list.length === 0 && <p className="text-center text-gray-400 py-20 font-bold italic">No {type} yet.</p>}
+    <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end justify-center animate-in fade-in duration-200">
+      <div className="bg-white w-full max-w-md rounded-t-[2.5rem] max-h-[80vh] flex flex-col animate-in slide-in-from-bottom duration-300">
+        <div className="p-6 border-b border-gray-50 flex justify-between items-center bg-white rounded-t-[2.5rem] sticky top-0">
+          <h3 className="font-black text-lg uppercase tracking-widest text-blue-600">{type}</h3>
+          <X onClick={onClose} className="cursor-pointer text-gray-300 hover:text-black transition" />
+        </div>
+        <div className="overflow-y-auto p-4 space-y-2">
+          {loading ? (
+             <p className="text-center py-10 animate-pulse font-black text-gray-200">LOADING...</p>
+          ) : list.length > 0 ? (
+            list.map(u => (
+              <div key={u.id} className="flex items-center gap-4 cursor-pointer hover:bg-gray-50 p-3 rounded-2xl transition" onClick={() => openProfile(u.id)}>
+                <img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover shadow-sm" />
+                <div className="flex-grow">
+                  <p className="font-black text-sm">{u.display_name}</p>
+                  <p className="text-gray-400 text-xs font-bold">@{u.username}</p>
+                </div>
+                <ChevronLeft className="text-gray-200 rotate-180" size={16} />
+              </div>
+            ))
+          ) : (
+            <p className="text-center text-gray-400 py-20 font-bold italic">No {type} found.</p>
+          )}
         </div>
       </div>
     </div>
@@ -327,7 +351,7 @@ function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelect
       <div className="p-4 sticky top-0 bg-white/95 z-10 border-b border-gray-100 shadow-sm">
         <div className="relative">
           <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-          <input type="text" placeholder="DISCOVER IN STREAM" className="w-full bg-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-black" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          <input type="text" placeholder="DISCOVER IN STREAM" className="w-full bg-gray-100 rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-black uppercase" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
       </div>
       <div className="grid grid-cols-3 gap-[2px]">
@@ -342,12 +366,18 @@ function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelect
 function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile }) {
   return (
     <div className="animate-in fade-in">
-      <header className="p-4 border-b border-gray-100 font-black text-lg text-center uppercase italic">Stream Chat</header>
+      <header className="p-4 border-b border-gray-100 font-black text-lg text-center uppercase italic sticky top-0 bg-white/95 z-10">Stream Chat</header>
       <div className="p-2">
         {allProfiles.filter(p => p.id !== user.id).map(u => (
-          <div key={u.id} className="flex items-center gap-4 p-4 hover:bg-gray-50 rounded-2xl cursor-pointer" onClick={() => setDmTarget(u)}>
-            <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-sm" />
-            <div className="flex-grow border-b border-gray-50 pb-2"><p className="font-bold text-sm">{u.display_name}</p><p className="text-xs text-blue-500 font-medium">Tap to Chat</p></div>
+          <div key={u.id} className="flex items-center gap-4 p-4 hover:bg-gray-50 rounded-2xl cursor-pointer transition" onClick={() => setDmTarget(u)}>
+            <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-sm" onClick={(e) => { e.stopPropagation(); openProfile(u.id); }} />
+            <div className="flex-grow border-b border-gray-50 pb-2">
+              <div className="flex justify-between items-center">
+                <p className="font-bold text-sm">{u.display_name}</p>
+                <span className="text-[10px] text-gray-300 font-bold uppercase tracking-tighter">Active</span>
+              </div>
+              <p className="text-xs text-blue-500 font-medium mt-1 uppercase tracking-tighter italic">Tap to Chat</p>
+            </div>
           </div>
         ))}
       </div>
@@ -379,20 +409,20 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar }) {
   return (
     <div className="fixed inset-0 z-50 bg-[#f8f9fa] flex flex-col animate-in slide-in-from-right duration-300">
       <header className="bg-white p-4 flex items-center gap-3 border-b border-gray-100 shadow-sm sticky top-0">
-        <ChevronLeft onClick={() => setDmTarget(null)} className="cursor-pointer" />
+        <ChevronLeft onClick={() => setDmTarget(null)} className="cursor-pointer hover:bg-gray-100 p-1 rounded-full" />
         <img src={getAvatar(target.username, target.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
         <div><p className="font-black text-sm leading-tight">{target.display_name}</p><p className="text-[10px] text-gray-400 font-bold">@{target.username}</p></div>
       </header>
       <div className="flex-grow overflow-y-auto p-4 space-y-4">
         {messages.map(m => (
           <div key={m.id} className={`flex ${m.sender_id === currentUser.id ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] p-4 rounded-[1.5rem] text-sm ${m.sender_id === currentUser.id ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-100 shadow-sm'}`}>{m.text}</div>
+            <div className={`max-w-[80%] p-4 rounded-[1.5rem] text-sm shadow-sm ${m.sender_id === currentUser.id ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'}`}>{m.text}</div>
           </div>
         ))}
         <div ref={scrollRef} />
       </div>
       <form onSubmit={sendMsg} className="p-4 bg-white border-t border-gray-50 flex gap-2">
-        <input type="text" className="flex-grow bg-gray-50 p-4 rounded-2xl text-sm outline-none" placeholder="Aa" value={text} onChange={(e) => setText(e.target.value)} />
+        <input type="text" className="flex-grow bg-gray-50 p-4 rounded-2xl text-sm outline-none font-medium" placeholder="Aa" value={text} onChange={(e) => setText(e.target.value)} />
         <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition"><Send size={18}/></button>
       </form>
     </div>
@@ -437,4 +467,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-        }
+              }
