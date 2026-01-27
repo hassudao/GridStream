@@ -462,13 +462,13 @@ function PostCard({ post, openProfile, getAvatar, onDelete, currentUser, darkMod
     <article className={`p-4 flex gap-3 hover:bg-gray-50/5 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
       <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover shadow-sm" onClick={() => openProfile(post.profiles.id)} />
       <div className="flex-grow min-w-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 cursor-pointer" onClick={() => openProfile(post.profiles.id)}>
+        <div className="flex justify-between items-start">
+          <div className="flex flex-col cursor-pointer mb-1" onClick={() => openProfile(post.profiles.id)}>
             <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
             <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
           </div>
           {isMyPost && (
-            <button onClick={() => onDelete(post.id)} className="text-gray-400 hover:text-red-500 transition p-1">
+            <button onClick={() => onDelete(post.id)} className="text-gray-300 hover:text-red-500 transition p-1 ml-2">
               <Trash2 size={16} />
             </button>
           )}
@@ -495,7 +495,7 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, curr
       <div className={`w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
         <div className={`p-5 border-b flex items-center gap-3 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
           <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover cursor-pointer" onClick={() => { openProfile(post.profiles.id); onClose(); }} />
-          <div>
+          <div className="flex flex-col">
             <p className="font-black text-sm cursor-pointer" onClick={() => { openProfile(post.profiles.id); onClose(); }}>{post.profiles?.display_name}</p>
             <p className="text-gray-400 text-xs font-bold">@{post.profiles?.username}</p>
           </div>
@@ -628,4 +628,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-}
+        }
