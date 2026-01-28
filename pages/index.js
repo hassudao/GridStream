@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, Check, AtSign, Zap, LogOut, Mail, Lock, MoreHorizontal, Settings, Save, Moon, Sun, AlertCircle, Trash2 } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, MapPin, Calendar, Check, AtSign, Zap, LogOut, Mail, Lock, MoreHorizontal, Settings, Save, Moon, Sun, AlertCircle, Trash2, CornerDownRight } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -23,6 +23,7 @@ export default function App() {
   const [myProfile, setMyProfile] = useState({ username: '', display_name: '', bio: '', avatar_url: '', header_url: '' });
 
   const [newPost, setNewPost] = useState('');
+  const [replyTarget, setReplyTarget] = useState(null); // リプライ先の管理
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPost, setSelectedPost] = useState(null);
   const [profileTab, setProfileTab] = useState('list'); 
@@ -32,7 +33,6 @@ export default function App() {
   const avatarInputRef = useRef(null);
   const headerInputRef = useRef(null);
 
-  // 初回ロードとユーザー状態監視
   useEffect(() => {
     checkUser();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -45,7 +45,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ユーザー情報が変わった時に投稿データを取得（ここが修正ポイント！）
   useEffect(() => {
     fetchData();
   }, [user]);
@@ -75,11 +74,11 @@ export default function App() {
     
     if (error) console.error("Fetch posts error:", error);
     if (postsData) {
-      // ユーザーが確定している状態でいいね判定
       const formattedPosts = postsData.map(post => ({
         ...post,
         like_count: post.likes?.length || 0,
-        is_liked: user ? post.likes?.some(l => l.user_id === user.id) : false
+        is_liked: user ? post.likes?.some(l => l.user_id === user.id) : false,
+        reply_count: postsData.filter(p => p.parent_id === post.id).length // リプライ数の計算
       }));
       setPosts(formattedPosts);
     }
@@ -90,8 +89,6 @@ export default function App() {
 
   async function toggleLike(postId, isLiked) {
     if (!user) return;
-
-    // UIを即座に更新する「楽観的アップデート」
     setPosts(prev => prev.map(p => {
       if (p.id === postId) {
         return {
@@ -102,13 +99,11 @@ export default function App() {
       }
       return p;
     }));
-
     if (isLiked) {
       await supabase.from('likes').delete().eq('post_id', postId).eq('user_id', user.id);
     } else {
       await supabase.from('likes').insert([{ post_id: postId, user_id: user.id }]);
     }
-    // 最終的な整合性を取るために再取得
     fetchData();
   }
 
@@ -175,9 +170,17 @@ export default function App() {
     setUploading(true);
     let imageUrl = null;
     if (fileInputRef.current?.files[0]) imageUrl = await uploadToCloudinary(fileInputRef.current.files[0]);
-    const { error } = await supabase.from('posts').insert([{ content: newPost, user_id: user.id, image_url: imageUrl }]);
+    
+    const { error } = await supabase.from('posts').insert([{ 
+      content: newPost, 
+      user_id: user.id, 
+      image_url: imageUrl,
+      parent_id: replyTarget ? replyTarget.id : null // リプライ先IDを設定
+    }]);
+
     if (error) alert("投稿に失敗しました: " + error.message);
     setNewPost('');
+    setReplyTarget(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     fetchData();
     setUploading(false);
@@ -229,7 +232,7 @@ export default function App() {
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
-      {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} />}
+      {selectedPost && <PostDetailModal post={selectedPost} allPosts={posts} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} onReply={(p) => { setReplyTarget(p); setSelectedPost(null); setView('home'); window.scrollTo(0,0); }} currentUser={user} darkMode={darkMode} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
       {view === 'home' && (
@@ -240,21 +243,42 @@ export default function App() {
             </h1>
             <MessageCircle size={24} className="cursor-pointer" onClick={() => setView('messages')} />
           </header>
+          
           <form onSubmit={handlePost} className={`p-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+            {replyTarget && (
+              <div className="flex justify-between items-center mb-2 bg-blue-50/10 p-2 rounded-lg">
+                <p className="text-[10px] font-bold text-blue-500 flex items-center gap-1">
+                  <CornerDownRight size={12} /> @{replyTarget.profiles.username} への返信
+                </p>
+                <X size={14} className="cursor-pointer text-gray-400" onClick={() => setReplyTarget(null)} />
+              </div>
+            )}
             <div className="flex gap-3">
               <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-10 h-10 rounded-full object-cover shadow-sm cursor-pointer" onClick={() => openProfile(user.id)} />
-              <textarea className={`flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent font-medium`} placeholder="今、何を考えてる？" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
+              <textarea className={`flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent font-medium`} placeholder={replyTarget ? "返信を書き込む..." : "今、何を考えてる？"} value={newPost} onChange={(e) => setNewPost(e.target.value)} />
             </div>
             <div className="flex justify-between items-center pl-12 mt-2">
               <label className="cursor-pointer text-blue-500 hover:bg-blue-50/10 p-2 rounded-full transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
               <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs shadow-lg uppercase tracking-tighter">
-                {uploading ? '...' : 'Stream'}
+                {uploading ? '...' : (replyTarget ? 'Reply' : 'Stream')}
               </button>
             </div>
           </form>
+
           <div className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
-            {posts.map(post => (
-              <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} />
+            {posts.filter(p => !p.parent_id).map(post => (
+              <PostCard 
+                key={post.id} 
+                post={post} 
+                openProfile={openProfile} 
+                getAvatar={getAvatar} 
+                onDelete={handleDeletePost} 
+                onLike={toggleLike} 
+                onReply={() => setReplyTarget(post)} 
+                onClickDetail={() => setSelectedPost(post)}
+                currentUser={user} 
+                darkMode={darkMode} 
+              />
             ))}
           </div>
         </div>
@@ -262,6 +286,7 @@ export default function App() {
 
       {view === 'profile' && profileInfo && (
         <div className="animate-in fade-in pb-10">
+          {/* プロフィールヘッダー部分は共通のため中略（既存のまま） */}
           <div className={`h-32 relative overflow-hidden bg-gray-200 ${!profileInfo.header_url && 'bg-gradient-to-br from-blue-700 via-indigo-600 to-cyan-500'}`}>
             <img src={isEditing ? editData.header_url : profileInfo.header_url} className="w-full h-full object-cover" alt="" />
             {isEditing && (
@@ -339,7 +364,7 @@ export default function App() {
                   profileTab === 'grid' ? ( 
                     <img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer hover:brightness-90 transition" onClick={() => setSelectedPost(post)} /> 
                   ) : ( 
-                    <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} /> 
+                    <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onDelete={handleDeletePost} onLike={toggleLike} onReply={() => setReplyTarget(post)} onClickDetail={() => setSelectedPost(post)} currentUser={user} darkMode={darkMode} /> 
                   )
                 ))}
               </div>
@@ -352,7 +377,7 @@ export default function App() {
       {view === 'messages' && <MessagesList allProfiles={allProfiles} user={user} setDmTarget={setDmTarget} getAvatar={getAvatar} openProfile={openProfile} darkMode={darkMode} />}
 
       <nav className={`fixed bottom-0 max-w-md w-full border-t flex justify-around py-4 z-40 shadow-sm ${darkMode ? 'bg-black/95 border-gray-800 text-gray-600' : 'bg-white/95 border-gray-100 text-gray-300'}`}>
-        <HomeIcon onClick={() => setView('home')} className={`cursor-pointer ${view === 'home' ? 'text-blue-600' : ''}`} />
+        <HomeIcon onClick={() => { setView('home'); setReplyTarget(null); }} className={`cursor-pointer ${view === 'home' ? 'text-blue-600' : ''}`} />
         <Search onClick={() => setView('search')} className={`cursor-pointer ${view === 'search' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
         <MessageCircle onClick={() => setView('messages')} className={`cursor-pointer ${view === 'messages' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
         <UserIcon onClick={() => openProfile(user.id)} className={`cursor-pointer ${view === 'profile' && activeProfileId === user.id ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
@@ -360,6 +385,110 @@ export default function App() {
     </div>
   );
 }
+
+// サブコンポーネント: PostCard (リプライ用プロパティ追加)
+function PostCard({ post, openProfile, getAvatar, onDelete, onLike, onReply, onClickDetail, currentUser, darkMode, isReplyView = false }) {
+  const isMyPost = currentUser && post.user_id === currentUser.id;
+  return (
+    <article className={`p-4 flex gap-3 hover:bg-gray-50/5 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'} ${isReplyView ? 'ml-8 border-l-2' : ''}`}>
+      <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles.id)} />
+      <div className="flex-grow min-w-0" onClick={onClickDetail}>
+        <div className="flex justify-between items-start">
+          <div className="flex flex-col cursor-pointer mb-1" onClick={(e) => { e.stopPropagation(); openProfile(post.profiles.id); }}>
+            <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
+            <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
+          </div>
+          {isMyPost && <button onClick={(e) => { e.stopPropagation(); onDelete(post.id); }} className="text-gray-300 hover:text-red-500 transition p-1 ml-2"><Trash2 size={16} /></button>}
+        </div>
+        <p className={`text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{post.content}</p>
+        {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100" />}
+        
+        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px] items-center">
+          <button 
+            onClick={(e) => { e.stopPropagation(); onLike(post.id, post.is_liked); }} 
+            className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'hover:text-red-500'}`}
+          >
+            <Heart size={18} fill={post.is_liked ? "currentColor" : "none"} />
+            <span className="text-xs font-black">{post.like_count || ''}</span>
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); onReply(); }} className="flex items-center gap-1.5 hover:text-blue-500 transition">
+            <MessageCircle size={18} />
+            <span className="text-xs font-black">{post.reply_count || ''}</span>
+          </button>
+          <Share2 size={18} className="hover:text-green-500 transition" />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+// サブコンポーネント: PostDetailModal (リプライ一覧表示対応)
+function PostDetailModal({ post, allPosts, onClose, getAvatar, openProfile, onDelete, onLike, onReply, currentUser, darkMode }) {
+  const isMyPost = currentUser && post.user_id === currentUser.id;
+  const replies = allPosts.filter(p => p.parent_id === post.id).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-start overflow-y-auto">
+      <div className="w-full max-w-md min-h-screen pb-10">
+        <header className="sticky top-0 z-10 p-4 flex justify-between items-center bg-transparent">
+           <button onClick={onClose} className="text-white p-2 bg-black/20 rounded-full"><ChevronLeft size={24}/></button>
+           <h2 className="text-white font-black uppercase text-xs tracking-widest">Thread</h2>
+           <div className="w-10"></div>
+        </header>
+
+        <div className={`mx-4 rounded-[2rem] overflow-hidden mb-4 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+          <div className="p-5 border-b flex items-center gap-3">
+            <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
+            <div className="flex flex-col"><p className="font-black text-sm">{post.profiles?.display_name}</p><p className="text-gray-400 text-xs font-bold">@{post.profiles?.username}</p></div>
+          </div>
+          <div className="p-5">
+            {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
+            <p className="font-medium text-lg leading-relaxed mb-6">{post.content}</p>
+            <div className="flex items-center justify-between border-t pt-4">
+               <div className="flex gap-6">
+                 <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 ${post.is_liked ? 'text-red-500' : 'text-gray-400'}`}>
+                   <Heart size={20} fill={post.is_liked ? "currentColor" : "none"} />
+                   <span className="font-black text-sm">{post.like_count || 0}</span>
+                 </button>
+                 <button onClick={() => onReply(post)} className="flex items-center gap-1.5 text-gray-400">
+                   <MessageCircle size={20} />
+                   <span className="font-black text-sm">{post.reply_count || 0}</span>
+                 </button>
+               </div>
+               {isMyPost && <button onClick={() => { onDelete(post.id); onClose(); }} className="text-gray-300 hover:text-red-500"><Trash2 size={20}/></button>}
+            </div>
+          </div>
+        </div>
+
+        {/* リプライ一覧 */}
+        <div className="mx-4 space-y-2">
+          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-2 mb-2">Replies</p>
+          <div className={`rounded-[2rem] divide-y ${darkMode ? 'bg-gray-900 divide-gray-800' : 'bg-white divide-gray-50'}`}>
+            {replies.length === 0 ? (
+              <p className="p-10 text-center text-gray-400 text-xs font-bold italic">No replies yet.</p>
+            ) : (
+              replies.map(reply => (
+                <PostCard 
+                  key={reply.id} 
+                  post={reply} 
+                  getAvatar={getAvatar} 
+                  openProfile={openProfile} 
+                  onDelete={onDelete} 
+                  onLike={onLike} 
+                  onReply={() => onReply(reply)} 
+                  currentUser={currentUser} 
+                  darkMode={darkMode} 
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Settings, FollowList, SearchView, MessagesList, DMScreen, AuthScreen は変更なしのため省略 (元のコードを使用してください)
 
 function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
   const [loading, setLoading] = useState(false);
@@ -449,69 +578,6 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
               <div className="flex-grow"><p className="font-black text-sm">{u.display_name}</p><p className="text-gray-400 text-xs font-bold">@{u.username}</p></div>
             </div>
           ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser, darkMode }) {
-  const isMyPost = currentUser && post.user_id === currentUser.id;
-  return (
-    <article className={`p-4 flex gap-3 hover:bg-gray-50/5 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-      <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles.id)} />
-      <div className="flex-grow min-w-0">
-        <div className="flex justify-between items-start">
-          <div className="flex flex-col cursor-pointer mb-1" onClick={() => openProfile(post.profiles.id)}>
-            <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
-            <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
-          </div>
-          {isMyPost && <button onClick={() => onDelete(post.id)} className="text-gray-300 hover:text-red-500 transition p-1 ml-2"><Trash2 size={16} /></button>}
-        </div>
-        <p className={`text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{post.content}</p>
-        {post.image_url && <img src={post.image_url} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100" />}
-        
-        <div className="flex justify-between mt-4 text-gray-400 max-w-[200px] items-center">
-          <button 
-            onClick={() => onLike(post.id, post.is_liked)} 
-            className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'hover:text-red-500'}`}
-          >
-            <Heart size={18} fill={post.is_liked ? "currentColor" : "none"} />
-            <span className="text-xs font-black">{post.like_count || ''}</span>
-          </button>
-          <MessageCircle size={18} className="hover:text-blue-500 transition" />
-          <Share2 size={18} className="hover:text-green-500 transition" />
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLike, currentUser, darkMode }) {
-  const isMyPost = currentUser && post.user_id === currentUser.id;
-  return (
-    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4">
-      <div className="absolute top-6 right-6 flex gap-4">
-        {isMyPost && <button onClick={() => { onDelete(post.id); onClose(); }} className="text-white p-2 hover:bg-red-500/20 rounded-full transition"><Trash2 size={24}/></button>}
-        <button onClick={onClose} className="text-white p-2 hover:bg-white/10 rounded-full transition"><X size={28}/></button>
-      </div>
-      <div className={`w-full max-w-md rounded-[2.5rem] overflow-hidden ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
-        <div className="p-5 border-b flex items-center gap-3">
-          <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
-          <div className="flex flex-col"><p className="font-black text-sm">{post.profiles?.display_name}</p><p className="text-gray-400 text-xs font-bold">@{post.profiles?.username}</p></div>
-        </div>
-        <div className="p-5 max-h-[60vh] overflow-y-auto">
-          {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
-          <p className="font-medium leading-relaxed mb-4">{post.content}</p>
-          <div className="flex items-center gap-2">
-             <button 
-               onClick={() => onLike(post.id, post.is_liked)} 
-               className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500' : 'text-gray-400'}`}
-             >
-               <Heart size={20} fill={post.is_liked ? "currentColor" : "none"} />
-               <span className="font-black">{post.like_count || 0} Likes</span>
-             </button>
-          </div>
         </div>
       </div>
     </div>
@@ -635,4 +701,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-                          }
+        }
