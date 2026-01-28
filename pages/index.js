@@ -198,12 +198,13 @@ export default function App() {
 
   return (
     <div className={`max-w-md mx-auto min-h-screen pb-20 border-x font-sans relative shadow-2xl overflow-x-hidden transition-colors duration-300 ${darkMode ? 'bg-black text-white border-gray-800' : 'bg-white text-black border-gray-100'}`}>
+      {/* Tailwind CDN を確実に読み込む */}
+      <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
       <script src="https://cdn.tailwindcss.com"></script>
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
       
-      {/* モーダル表示部分 */}
       {selectedPost && (
         <PostDetailModal 
           post={selectedPost} 
@@ -328,7 +329,6 @@ export default function App() {
   );
 }
 
-// 子コンポーネント: スレッド詳細モーダル
 function PostDetailModal({ post, onClose, getAvatar, openProfile, onLike, currentUser, darkMode, fetchData }) {
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
@@ -359,7 +359,6 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onLike, curren
   return (
     <div className={`fixed inset-0 z-[9999] flex flex-col animate-in slide-in-from-right duration-300 ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
       <header className={`p-4 border-b flex items-center gap-4 sticky top-0 z-50 backdrop-blur-md ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-50'}`}>
-        {/* 確実に閉じるための大きなボタン領域 */}
         <button onClick={onClose} className="p-2 -ml-2 hover:bg-gray-500/10 rounded-full transition cursor-pointer">
           <ChevronLeft size={28} />
         </button>
@@ -414,7 +413,6 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onLike, curren
   );
 }
 
-// 共通パーツ: 投稿カード
 function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser, darkMode, onComment }) {
   const isMyPost = currentUser && post.user_id === currentUser.id;
   return (
@@ -442,7 +440,6 @@ function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser,
   );
 }
 
-// 他のコンポーネント（SearchView, MessagesList, DMScreen, SettingsScreen, FollowListModal, AuthScreen）はこれまでと同様のため、省略せず繋ぎ込みます
 function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelectedPost, darkMode }) {
   return (
     <div className="animate-in fade-in">
@@ -616,6 +613,7 @@ function AuthScreen({ fetchData, validateProfile }) {
   }
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white">
+      <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
       <div className="w-20 h-20 bg-gradient-to-tr from-blue-700 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-pulse"><Zap size={40} color="white" fill="white" /></div>
       <h1 className="text-4xl font-black mb-10 text-blue-700 italic tracking-tighter uppercase">GridStream</h1>
       <form onSubmit={handleAuth} className="w-full max-w-xs space-y-4">
@@ -627,4 +625,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-}
+                                                            }
