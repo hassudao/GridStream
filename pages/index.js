@@ -1,9 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, Save, UserCheck, AtSign, AlignLeft, Lock, Mail } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, Save, UserCheck, AtSign, AlignLeft, Lock, Mail, Clock } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
+
+// 日時フォーマット用のユーティリティ
+const formatTime = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleString('ja-JP', { 
+    month: 'short', 
+    day: 'numeric', 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+};
 
 export default function App() {
   const [view, setView] = useState('home'); 
@@ -318,7 +330,7 @@ export default function App() {
   );
 }
 
-// --- 以下、コンポーネント ---
+// --- コンポーネント ---
 
 function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
   const [newEmail, setNewEmail] = useState(user.email);
@@ -387,9 +399,12 @@ function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, 
     <article className={`p-4 flex gap-3 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
       <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles.id)} />
       <div className="flex-grow min-w-0">
-        <div className="flex flex-col cursor-pointer mb-1" onClick={() => openProfile(post.profiles.id)}>
-          <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
-          <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
+        <div className="flex justify-between items-start mb-1">
+          <div className="flex flex-col cursor-pointer max-w-[70%]" onClick={() => openProfile(post.profiles.id)}>
+            <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
+            <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
+          </div>
+          <span className="text-[10px] text-gray-400 font-bold whitespace-nowrap pt-1">{formatTime(post.created_at)}</span>
         </div>
         <p className="text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap">{post.content}</p>
         {post.image_url && <img src={post.image_url} onClick={onOpenDetail} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100/10 cursor-pointer hover:brightness-95 transition" />}
@@ -414,10 +429,13 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
   const isMyPost = currentUser && post.user_id === currentUser.id;
 
   useEffect(() => { fetchComments(); }, [post.id]);
+
   async function fetchComments() {
-    const { data } = await supabase.from('comments').select('*, profiles(id, username, display_name, avatar_url)').eq('post_id', post.id).order('created_at', { ascending: true });
+    // 新しいコメントを上にするために descending: false を ascending: false に変更
+    const { data } = await supabase.from('comments').select('*, profiles(id, username, display_name, avatar_url)').eq('post_id', post.id).order('created_at', { ascending: false });
     if (data) setComments(data);
   }
+
   async function handlePostComment(e) {
     e.preventDefault();
     if (!commentText.trim() || !currentUser) return;
@@ -428,6 +446,7 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
     refreshPosts();
     setLoading(false);
   }
+
   async function handleDeleteComment(commentId) {
     if (!window.confirm("このコメントを削除しますか？")) return;
     await supabase.from('comments').delete().eq('id', commentId).eq('user_id', currentUser.id);
@@ -441,7 +460,10 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
         <div className={`p-4 border-b flex items-center justify-between ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
           <div className="flex items-center gap-3" onClick={() => { onClose(); openProfile(post.profiles.id); }}>
             <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" />
-            <span className="font-black text-xs">@{post.profiles?.username}</span>
+            <div className="flex flex-col">
+              <span className="font-black text-[10px]">@{post.profiles?.username}</span>
+              <span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(post.created_at)}</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {isMyPost && <button onClick={() => onDelete(post.id)} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={20}/></button>}
@@ -455,11 +477,14 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
           </div>
           <div className="p-5 space-y-4 pb-10">
             {comments.map(c => (
-              <div key={c.id} className="flex gap-3">
+              <div key={c.id} className="flex gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
                 <img src={getAvatar(c.profiles?.username, c.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" />
                 <div className={`flex-grow p-3 rounded-2xl relative ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
                   <div className="flex justify-between items-start">
-                    <span className="font-black text-[11px] block mb-1">@{c.profiles?.username}</span>
+                    <div className="flex flex-col mb-1">
+                      <span className="font-black text-[10px]">@{c.profiles?.username}</span>
+                      <span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(c.created_at)}</span>
+                    </div>
                     {currentUser.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>}
                   </div>
                   <p className="text-sm font-medium leading-relaxed">{c.content}</p>
@@ -616,4 +641,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Login"}</button>
     </div>
   );
-       }
+                                                                                                                  }
