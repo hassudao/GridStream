@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, Save, UserCheck, AtSign, AlignLeft, Lock, Mail, Clock } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, Save, UserCheck, AtSign, AlignLeft, Lock, Mail, Clock, UserPlus, UserMinus } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -137,7 +137,7 @@ export default function App() {
   }
 
   const handleShare = async (post) => {
-    const shareData = { title: 'GridStream', text: post.content, url: window.location.href };
+    const shareData = { title: 'Beta SNS', text: post.content, url: window.location.href };
     try {
       if (navigator.share) await navigator.share(shareData);
       else {
@@ -180,17 +180,33 @@ export default function App() {
     setActiveProfileId(userId);
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
     setProfileInfo(profile);
+    
+    // フォロー状況の取得
     const { count: fers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userId);
     const { count: fing } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId);
+    
     let isFollowing = false;
     if (user && user.id !== userId) {
       const { data } = await supabase.from('follows').select('*').eq('follower_id', user.id).eq('following_id', userId).single();
       isFollowing = !!data;
     }
+    
     setStats({ followers: fers || 0, following: fing || 0, isFollowing });
     setView('profile');
     setIsEditing(false);
   };
+
+  async function toggleFollow() {
+    if (!user || !activeProfileId || user.id === activeProfileId) return;
+
+    if (stats.isFollowing) {
+      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', activeProfileId);
+      setStats(prev => ({ ...prev, isFollowing: false, followers: prev.followers - 1 }));
+    } else {
+      await supabase.from('follows').insert([{ follower_id: user.id, following_id: activeProfileId }]);
+      setStats(prev => ({ ...prev, isFollowing: true, followers: prev.followers + 1 }));
+    }
+  }
 
   const getAvatar = (name, url) => url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`;
 
@@ -213,7 +229,7 @@ export default function App() {
         <div className="animate-in fade-in">
           <header className={`sticky top-0 z-30 backdrop-blur-md border-b p-4 flex justify-between items-center ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-50'}`}>
             <h1 className="text-2xl font-black bg-gradient-to-r from-blue-700 to-cyan-500 bg-clip-text text-transparent italic tracking-tighter uppercase flex items-center gap-1">
-              <Zap size={24} className="text-blue-600 fill-blue-600" /> GridStream
+              <Zap size={24} className="text-blue-600 fill-blue-600" /> Beta
             </h1>
             <MessageCircle size={24} className="cursor-pointer" onClick={() => setView('messages')} />
           </header>
@@ -281,26 +297,36 @@ export default function App() {
               </div>
             </div>
           ) : (
-            /* 表示画面 */
+            /* プロフィール表示画面 */
             <>
               <div className="relative h-44 bg-gray-200">
                 <img src={profileInfo.header_url || 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&q=80'} className="w-full h-full object-cover" />
                 <div className="absolute top-4 inset-x-4 flex justify-between">
                   <button onClick={() => setView('home')} className="bg-black/30 backdrop-blur-md p-2 rounded-full text-white"><ChevronLeft size={20}/></button>
-                  <button onClick={() => setShowSettings(true)} className="bg-black/30 backdrop-blur-md p-2 rounded-full text-white"><Settings size={20}/></button>
+                  {/* 自分自身のプロフィールの場合のみ設定アイコンを表示 */}
+                  {user.id === activeProfileId && (
+                    <button onClick={() => setShowSettings(true)} className="bg-black/30 backdrop-blur-md p-2 rounded-full text-white"><Settings size={20}/></button>
+                  )}
                 </div>
               </div>
               <div className="px-4 relative">
                 <div className="flex justify-between items-end -mt-12 mb-4">
                   <img src={getAvatar(profileInfo.username, profileInfo.avatar_url)} className={`w-24 h-24 rounded-full border-4 shadow-xl object-cover ${darkMode ? 'border-black bg-black' : 'border-white bg-white'}`} />
-                  {user.id === activeProfileId && (
-                    <button onClick={() => setIsEditing(true)} className={`border rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>Edit Profile</button>
-                  )}
+                  <div className="flex gap-2">
+                    {user.id === activeProfileId ? (
+                      <button onClick={() => setIsEditing(true)} className={`border rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>Edit Profile</button>
+                    ) : (
+                      /* 他人のプロフィールの場合のフォロー/解除ボタン */
+                      <button onClick={toggleFollow} className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter transition ${stats.isFollowing ? (darkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-black') : 'bg-blue-600 text-white'}`}>
+                        {stats.isFollowing ? <><UserMinus size={14}/> Unfollow</> : <><UserPlus size={14}/> Follow</>}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <h2 className="text-2xl font-black tracking-tighter">{profileInfo.display_name}</h2>
                   <p className="text-gray-400 text-sm font-bold">@{profileInfo.username}</p>
-                  <p className="mt-3 text-[15px] font-medium leading-relaxed">{profileInfo.bio || 'GridStream member.'}</p>
+                  <p className="mt-3 text-[15px] font-medium leading-relaxed">{profileInfo.bio || 'Beta member.'}</p>
                   <div className="flex gap-4 mt-4">
                     <button onClick={() => setShowFollowList('following')} className="text-sm"><span className="font-black">{stats.following}</span> <span className="text-gray-400">Following</span></button>
                     <button onClick={() => setShowFollowList('followers')} className="text-sm"><span className="font-black">{stats.followers}</span> <span className="text-gray-400">Followers</span></button>
@@ -330,7 +356,7 @@ export default function App() {
   );
 }
 
-// --- コンポーネント ---
+// --- 以下、コンポーネント群は変更ありませんが、全体表示のため含めています ---
 
 function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
   const [newEmail, setNewEmail] = useState(user.email);
@@ -431,7 +457,6 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
   useEffect(() => { fetchComments(); }, [post.id]);
 
   async function fetchComments() {
-    // 新しいコメントを上にするために descending: false を ascending: false に変更
     const { data } = await supabase.from('comments').select('*, profiles(id, username, display_name, avatar_url)').eq('post_id', post.id).order('created_at', { ascending: false });
     if (data) setComments(data);
   }
@@ -520,7 +545,7 @@ function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelect
 function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, darkMode }) {
   return (
     <div className="animate-in fade-in">
-      <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10">GridStream Chat</header>
+      <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10">Beta Chat</header>
       <div className="p-2">
         {allProfiles.filter(p => p.id !== user.id).map(u => (
           <div key={u.id} className="flex items-center gap-4 p-4 rounded-2xl cursor-pointer hover:bg-gray-50/10" onClick={() => setDmTarget(u)}>
@@ -628,17 +653,17 @@ function AuthScreen({ fetchData }) {
     fetchData();
   }
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white">
+    <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black">
       <script src="https://cdn.tailwindcss.com"></script>
       <div className="w-20 h-20 bg-gradient-to-tr from-blue-700 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-pulse"><Zap size={40} color="white" fill="white" /></div>
-      <h1 className="text-4xl font-black mb-10 text-blue-700 italic uppercase">GridStream</h1>
+      <h1 className="text-4xl font-black mb-10 text-blue-700 italic uppercase">Beta</h1>
       <form onSubmit={handleAuth} className="w-full max-w-xs space-y-4">
         {!isLogin && <input type="text" placeholder="DISPLAY NAME" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />}
         <input type="email" placeholder="EMAIL" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input type="password" placeholder="PASSWORD" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        <button type="submit" className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">Login</button>
+        <button type="submit" className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">{isLogin ? "Login" : "Sign Up"}</button>
       </form>
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Login"}</button>
     </div>
   );
-}
+       }
