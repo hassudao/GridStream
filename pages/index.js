@@ -497,7 +497,6 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(false);
-  const isMyPost = currentUser && post.user_id === currentUser.id;
 
   useEffect(() => {
     if (post?.id) fetchComments();
@@ -522,7 +521,7 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
     if (!error) {
       setCommentText('');
       await fetchComments();
-      await fetchData(); // 親コンポーネントのカウントも更新
+      await fetchData(); 
     }
     setLoading(false);
   }
@@ -534,8 +533,8 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
         <h2 className="font-black uppercase tracking-tighter">Thread</h2>
       </header>
       
-      <div className="flex-grow overflow-y-auto">
-        {/* 親ポスト表示エリア */}
+      <div className="flex-grow overflow-y-auto pb-24">
+        {/* 親ポスト表示 */}
         <div className="p-4 border-b">
           <div className="flex gap-3 mb-4">
             <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-12 h-12 rounded-full object-cover cursor-pointer" onClick={() => openProfile(post.profiles?.id)} />
@@ -545,7 +544,7 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
             </div>
           </div>
           <p className="text-lg font-medium leading-relaxed whitespace-pre-wrap mb-4">{post.content}</p>
-          {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border border-gray-100/10" />}
+          {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
           
           <div className="flex gap-6 py-4 border-y border-gray-100/10 text-gray-400">
             <button 
@@ -562,18 +561,15 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
           </div>
         </div>
 
-        {/* コメント表示エリア */}
-        <div className="pb-24">
+        {/* コメント表示ループ */}
+        <div>
           {comments.length === 0 ? (
             <p className="text-center py-10 text-gray-400 text-xs font-black uppercase tracking-widest">No replies yet</p>
           ) : (
-            comments.map((comment, index) => (
-              <div key={comment.id} className="p-4 flex gap-3 relative">
-                <div className="flex flex-col items-center">
-                  <img src={getAvatar(comment.profiles?.username, comment.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover shrink-0 z-10" />
-                  {index !== comments.length - 1 && <div className={`w-[2px] flex-grow my-1 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}></div>}
-                </div>
-                <div className="flex-grow pb-4">
+            comments.map((comment) => (
+              <div key={comment.id} className="p-4 flex gap-3 border-b border-gray-100/5">
+                <img src={getAvatar(comment.profiles?.username, comment.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                <div className="flex-grow">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-black text-sm">{comment.profiles?.display_name}</span>
                     <span className="text-gray-400 text-[11px] font-bold">@{comment.profiles?.username}</span>
@@ -586,8 +582,8 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
         </div>
       </div>
 
-      {/* コメント入力エリア */}
-      <div className={`p-4 border-t sticky bottom-0 ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-100'}`}>
+      {/* コメント入力（常に最下部に固定） */}
+      <div className={`p-4 border-t fixed bottom-0 max-w-md w-full ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-100'}`}>
         <form onSubmit={handlePostComment} className="flex gap-3 items-center">
           <input 
             type="text" 
@@ -722,4 +718,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-                                              }
+        }
