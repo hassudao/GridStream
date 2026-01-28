@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, MoreVertical } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, Save, UserCheck, AtSign, AlignLeft } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -52,7 +52,10 @@ export default function App() {
 
   async function fetchMyProfile(userId) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) { setMyProfile(data); setEditData(data); }
+    if (data) { 
+      setMyProfile(data); 
+      setEditData(data); 
+    }
   }
 
   async function fetchData() {
@@ -76,6 +79,34 @@ export default function App() {
     }
     const { data: profData } = await supabase.from('profiles').select('*');
     if (profData) setAllProfiles(profData);
+  }
+
+  // --- プロフィール更新処理 ---
+  async function handleUpdateProfile() {
+    setUploading(true);
+    let { avatar_url, header_url } = editData;
+
+    if (avatarInputRef.current?.files[0]) {
+      avatar_url = await uploadToCloudinary(avatarInputRef.current.files[0]);
+    }
+    if (headerInputRef.current?.files[0]) {
+      header_url = await uploadToCloudinary(headerInputRef.current.files[0]);
+    }
+
+    const { error } = await supabase.from('profiles').update({
+      display_name: editData.display_name,
+      username: editData.username,
+      bio: editData.bio,
+      avatar_url,
+      header_url
+    }).eq('id', user.id);
+
+    if (!error) {
+      await fetchMyProfile(user.id);
+      await openProfile(user.id);
+      setIsEditing(false);
+    }
+    setUploading(false);
   }
 
   async function toggleLike(postId, isLiked) {
@@ -160,13 +191,13 @@ export default function App() {
     <div className={`max-w-md mx-auto min-h-screen pb-20 border-x font-sans relative shadow-2xl transition-colors duration-300 ${darkMode ? 'bg-black text-white border-gray-800' : 'bg-white text-black border-gray-100'}`}>
       <script src="https://cdn.tailwindcss.com"></script>
 
-      {/* モーダル */}
+      {/* モーダル群 */}
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
       {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} refreshPosts={fetchData} />}
-      {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} darkMode={darkMode} setDarkMode={setDarkMode} />}
+      {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} myProfile={myProfile} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
-      {/* ホーム */}
+      {/* ホーム画面 */}
       {view === 'home' && (
         <div className="animate-in fade-in">
           <header className={`sticky top-0 z-30 backdrop-blur-md border-b p-4 flex justify-between items-center ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-50'}`}>
@@ -195,41 +226,76 @@ export default function App() {
         </div>
       )}
 
-      {/* プロフィール */}
+      {/* プロフィール画面（編集含む） */}
       {view === 'profile' && profileInfo && (
         <div className="animate-in fade-in pb-10">
-          <div className="relative h-44 bg-gray-200">
-            <img src={profileInfo.header_url || 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&q=80'} className="w-full h-full object-cover" alt="header" />
-            <div className="absolute top-4 left-4 flex gap-2">
-              <button onClick={() => setView('home')} className="bg-black/30 backdrop-blur-md p-2 rounded-full text-white"><ChevronLeft size={20}/></button>
-            </div>
-            {/* 設定ボタンを追加 */}
-            <div className="absolute top-4 right-4">
-               <button onClick={() => setShowSettings(true)} className="bg-black/30 backdrop-blur-md p-2 rounded-full text-white"><Settings size={20}/></button>
-            </div>
-          </div>
-          <div className="px-4 relative">
-            <div className="flex justify-between items-end -mt-12 mb-4">
-              <img src={getAvatar(profileInfo.username, profileInfo.avatar_url)} className={`w-24 h-24 rounded-full border-4 shadow-xl object-cover ${darkMode ? 'border-black bg-black' : 'border-white bg-white'}`} />
-              {user.id === activeProfileId && (
-                <button onClick={() => setIsEditing(true)} className={`border rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>Edit Profile</button>
-              )}
-            </div>
-            <div>
-              <h2 className="text-2xl font-black tracking-tighter">{profileInfo.display_name}</h2>
-              <p className="text-gray-400 text-sm font-bold">@{profileInfo.username}</p>
-              <p className="mt-3 text-[15px] font-medium leading-relaxed">{profileInfo.bio || 'GridStream member.'}</p>
-              <div className="flex gap-4 mt-4">
-                <button onClick={() => setShowFollowList('following')} className="text-sm"><span className="font-black">{stats.following}</span> <span className="text-gray-400">Following</span></button>
-                <button onClick={() => setShowFollowList('followers')} className="text-sm"><span className="font-black">{stats.followers}</span> <span className="text-gray-400">Followers</span></button>
+          {isEditing ? (
+            /* 編集画面 */
+            <div className="p-4 space-y-6">
+              <header className="flex justify-between items-center mb-6">
+                <button onClick={() => setIsEditing(false)}><X size={24}/></button>
+                <h2 className="font-black uppercase tracking-widest">Edit Profile</h2>
+                <button onClick={handleUpdateProfile} disabled={uploading} className="bg-blue-600 text-white px-4 py-1.5 rounded-full text-xs font-black uppercase">{uploading ? '...' : 'Save'}</button>
+              </header>
+              <div className="space-y-4">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="relative group" onClick={() => avatarInputRef.current.click()}>
+                    <img src={getAvatar(editData.username, editData.avatar_url)} className="w-24 h-24 rounded-full object-cover border-4 border-blue-500 cursor-pointer" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><Camera className="text-white"/></div>
+                    <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" />
+                  </div>
+                  <p className="text-[10px] font-black text-gray-400 uppercase">Change Photo</p>
+                </div>
+                <div className="space-y-4">
+                  <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                    <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2 mb-1"><UserCheck size={12}/> Display Name</label>
+                    <input className="w-full bg-transparent outline-none font-bold" value={editData.display_name} onChange={e => setEditData({...editData, display_name: e.target.value})} />
+                  </div>
+                  <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                    <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2 mb-1"><AtSign size={12}/> Username</label>
+                    <input className="w-full bg-transparent outline-none font-bold text-blue-500" value={editData.username} onChange={e => setEditData({...editData, username: e.target.value})} />
+                  </div>
+                  <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                    <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2 mb-1"><AlignLeft size={12}/> Bio</label>
+                    <textarea className="w-full bg-transparent outline-none font-bold h-24 resize-none" value={editData.bio} onChange={e => setEditData({...editData, bio: e.target.value})} />
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-          <div className={`divide-y mt-8 border-t ${darkMode ? 'border-gray-800 divide-gray-800' : 'border-gray-100 divide-gray-100'}`}>
-            {posts.filter(p => p.user_id === activeProfileId).map(post => (
-              <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} onOpenDetail={() => setSelectedPost(post)} />
-            ))}
-          </div>
+          ) : (
+            /* 表示画面 */
+            <>
+              <div className="relative h-44 bg-gray-200">
+                <img src={profileInfo.header_url || 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&q=80'} className="w-full h-full object-cover" />
+                <div className="absolute top-4 inset-x-4 flex justify-between">
+                  <button onClick={() => setView('home')} className="bg-black/30 backdrop-blur-md p-2 rounded-full text-white"><ChevronLeft size={20}/></button>
+                  <button onClick={() => setShowSettings(true)} className="bg-black/30 backdrop-blur-md p-2 rounded-full text-white"><Settings size={20}/></button>
+                </div>
+              </div>
+              <div className="px-4 relative">
+                <div className="flex justify-between items-end -mt-12 mb-4">
+                  <img src={getAvatar(profileInfo.username, profileInfo.avatar_url)} className={`w-24 h-24 rounded-full border-4 shadow-xl object-cover ${darkMode ? 'border-black bg-black' : 'border-white bg-white'}`} />
+                  {user.id === activeProfileId && (
+                    <button onClick={() => setIsEditing(true)} className={`border rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>Edit Profile</button>
+                  )}
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black tracking-tighter">{profileInfo.display_name}</h2>
+                  <p className="text-gray-400 text-sm font-bold">@{profileInfo.username}</p>
+                  <p className="mt-3 text-[15px] font-medium leading-relaxed">{profileInfo.bio || 'GridStream member.'}</p>
+                  <div className="flex gap-4 mt-4">
+                    <button onClick={() => setShowFollowList('following')} className="text-sm"><span className="font-black">{stats.following}</span> <span className="text-gray-400">Following</span></button>
+                    <button onClick={() => setShowFollowList('followers')} className="text-sm"><span className="font-black">{stats.followers}</span> <span className="text-gray-400">Followers</span></button>
+                  </div>
+                </div>
+              </div>
+              <div className={`divide-y mt-8 border-t ${darkMode ? 'border-gray-800 divide-gray-800' : 'border-gray-100 divide-gray-100'}`}>
+                {posts.filter(p => p.user_id === activeProfileId).map(post => (
+                  <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} onOpenDetail={() => setSelectedPost(post)} />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -246,9 +312,47 @@ export default function App() {
   );
 }
 
+// --- 以下、コンポーネント ---
+
+function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
+  const handleLogout = () => { supabase.auth.signOut(); onClose(); };
+  return (
+    <div className={`fixed inset-0 z-[110] animate-in slide-in-from-bottom duration-300 ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
+      <header className="p-4 border-b flex items-center gap-4 sticky top-0 z-10">
+        <ChevronLeft onClick={onClose} className="cursor-pointer" /><h2 className="font-black uppercase tracking-widest">Settings</h2>
+      </header>
+      <div className="p-6 space-y-8">
+        <section>
+          <h3 className="text-gray-400 text-[10px] font-black uppercase mb-4 tracking-widest">Account</h3>
+          <div className={`p-4 rounded-2xl space-y-3 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+            <div><p className="text-[10px] text-gray-400 font-black uppercase">Email</p><p className="font-bold text-sm">{user.email}</p></div>
+            <div><p className="text-[10px] text-gray-400 font-black uppercase">User ID</p><p className="font-bold text-sm text-blue-500">@{myProfile.username}</p></div>
+          </div>
+        </section>
+
+        <section>
+          <h3 className="text-gray-400 text-[10px] font-black uppercase mb-4 tracking-widest">Appearance</h3>
+          <button onClick={() => setDarkMode(!darkMode)} className={`w-full flex justify-between items-center p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+            <span className="text-sm font-bold">Dark Mode</span>
+            <div className={`w-10 h-6 rounded-full relative transition-colors ${darkMode ? 'bg-blue-600' : 'bg-gray-300'}`}>
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${darkMode ? 'right-1' : 'left-1'}`} />
+            </div>
+          </button>
+        </section>
+
+        <section className="pt-4 border-t border-gray-100/10">
+          <button onClick={handleLogout} className="w-full p-4 rounded-2xl bg-red-500/10 text-red-500 font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2">
+            <LogOut size={16}/> Logout
+          </button>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, darkMode, onOpenDetail }) {
   return (
-    <article className={`p-4 flex gap-3 hover:bg-gray-50/5 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
+    <article className={`p-4 flex gap-3 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
       <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles.id)} />
       <div className="flex-grow min-w-0">
         <div className="flex flex-col cursor-pointer mb-1" onClick={() => openProfile(post.profiles.id)}>
@@ -256,7 +360,7 @@ function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, 
           <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
         </div>
         <p className="text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap">{post.content}</p>
-        {post.image_url && <img src={post.image_url} onClick={onOpenDetail} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100 cursor-pointer hover:brightness-95 transition" />}
+        {post.image_url && <img src={post.image_url} onClick={onOpenDetail} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100/10 cursor-pointer hover:brightness-95 transition" />}
         <div className="flex justify-between mt-4 text-gray-400 max-w-[200px] items-center">
           <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'hover:text-red-500'}`}>
             <Heart size={18} fill={post.is_liked ? "currentColor" : "none"} /><span className="text-xs font-black">{post.like_count || ''}</span>
@@ -278,12 +382,10 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
   const isMyPost = currentUser && post.user_id === currentUser.id;
 
   useEffect(() => { fetchComments(); }, [post.id]);
-
   async function fetchComments() {
     const { data } = await supabase.from('comments').select('*, profiles(id, username, display_name, avatar_url)').eq('post_id', post.id).order('created_at', { ascending: true });
     if (data) setComments(data);
   }
-
   async function handlePostComment(e) {
     e.preventDefault();
     if (!commentText.trim() || !currentUser) return;
@@ -294,7 +396,6 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
     refreshPosts();
     setLoading(false);
   }
-
   async function handleDeleteComment(commentId) {
     if (!window.confirm("このコメントを削除しますか？")) return;
     await supabase.from('comments').delete().eq('id', commentId).eq('user_id', currentUser.id);
@@ -306,40 +407,28 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
     <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-4">
       <div className={`w-full max-w-md rounded-[2.5rem] flex flex-col h-[85vh] overflow-hidden shadow-2xl ${darkMode ? 'bg-black border border-gray-800' : 'bg-white text-black'}`}>
         <div className={`p-4 border-b flex items-center justify-between ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" onClick={() => { onClose(); openProfile(post.profiles.id); }}>
             <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" />
             <span className="font-black text-xs">@{post.profiles?.username}</span>
           </div>
           <div className="flex items-center gap-2">
-            {isMyPost && <button onClick={() => onDelete(post.id)} className="p-2 text-gray-400 hover:text-red-500 transition"><Trash2 size={20}/></button>}
-            <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 transition"><X size={24}/></button>
+            {isMyPost && <button onClick={() => onDelete(post.id)} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={20}/></button>}
+            <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600"><X size={24}/></button>
           </div>
         </div>
-        
         <div className="flex-grow overflow-y-auto">
           <div className="p-5 border-b">
-            {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border" />}
+            {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border border-gray-100/10" />}
             <p className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{post.content}</p>
-            <div className="flex items-center gap-6 text-gray-400 border-t pt-4">
-               <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'hover:text-red-500'}`}>
-                 <Heart size={20} fill={post.is_liked ? "currentColor" : "none"} /><span className="font-black text-sm">{post.like_count || 0}</span>
-               </button>
-               <div className="flex items-center gap-1.5"><MessageSquare size={20} /><span className="font-black text-sm">{post.comment_count || 0}</span></div>
-               <button onClick={() => onShare(post)} className="hover:text-green-500 transition"><Share2 size={20}/></button>
-            </div>
           </div>
-
           <div className="p-5 space-y-4 pb-10">
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-500">Comments</h4>
             {comments.map(c => (
               <div key={c.id} className="flex gap-3">
                 <img src={getAvatar(c.profiles?.username, c.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" />
                 <div className={`flex-grow p-3 rounded-2xl relative ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
                   <div className="flex justify-between items-start">
                     <span className="font-black text-[11px] block mb-1">@{c.profiles?.username}</span>
-                    {currentUser.id === c.user_id && (
-                      <button onClick={() => handleDeleteComment(c.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>
-                    )}
+                    {currentUser.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>}
                   </div>
                   <p className="text-sm font-medium leading-relaxed">{c.content}</p>
                 </div>
@@ -347,7 +436,6 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
             ))}
           </div>
         </div>
-
         <form onSubmit={handlePostComment} className={`p-4 border-t flex gap-2 ${darkMode ? 'bg-black border-gray-800' : 'bg-white'}`}>
           <input type="text" placeholder="コメントを入力..." className={`flex-grow p-4 rounded-2xl text-sm outline-none font-medium ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={commentText} onChange={(e) => setCommentText(e.target.value)} />
           <button type="submit" disabled={loading || !commentText.trim()} className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition"><Send size={18}/></button>
@@ -379,8 +467,8 @@ function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, 
       <div className="p-2">
         {allProfiles.filter(p => p.id !== user.id).map(u => (
           <div key={u.id} className="flex items-center gap-4 p-4 rounded-2xl cursor-pointer hover:bg-gray-50/10" onClick={() => setDmTarget(u)}>
-            <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover" onClick={(e) => { e.stopPropagation(); openProfile(u.id); }} />
-            <div className="flex-grow border-b pb-2"><p className="font-bold text-sm">{u.display_name}</p><p className="text-xs text-blue-500 font-medium mt-1 italic uppercase">Tap to Stream</p></div>
+            <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-md" onClick={(e) => { e.stopPropagation(); openProfile(u.id); }} />
+            <div className="flex-grow border-b pb-2"><p className="font-bold text-sm">{u.display_name}</p><p className="text-xs text-blue-500 font-medium mt-1 italic uppercase tracking-tighter">Open Stream</p></div>
           </div>
         ))}
       </div>
@@ -419,36 +507,15 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode }) {
       <div className="flex-grow overflow-y-auto p-4 space-y-4">
         {messages.map(m => (
           <div key={m.id} className={`flex ${m.sender_id === currentUser.id ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] p-4 rounded-[1.5rem] text-sm ${m.sender_id === currentUser.id ? 'bg-blue-600 text-white rounded-tr-none' : (darkMode ? 'bg-gray-800 text-white rounded-tl-none' : 'bg-white text-gray-800 rounded-tl-none')}`}>{m.text}</div>
+            <div className={`max-w-[80%] p-4 rounded-[1.5rem] text-sm ${m.sender_id === currentUser.id ? 'bg-blue-600 text-white rounded-tr-none' : (darkMode ? 'bg-gray-800 text-white rounded-tl-none' : 'bg-white text-gray-800 rounded-tl-none shadow-sm')}`}>{m.text}</div>
           </div>
         ))}
         <div ref={scrollRef} />
       </div>
       <form onSubmit={sendMsg} className="p-4 border-t flex gap-2">
-        <input type="text" className={`flex-grow p-4 rounded-2xl text-sm outline-none ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} placeholder="Aa" value={text} onChange={(e) => setText(e.target.value)} />
+        <input type="text" className={`flex-grow p-4 rounded-2xl text-sm outline-none font-medium ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} placeholder="Aa" value={text} onChange={(e) => setText(e.target.value)} />
         <button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition"><Send size={18}/></button>
       </form>
-    </div>
-  );
-}
-
-function SettingsScreen({ onClose, user, darkMode, setDarkMode }) {
-  const handleLogout = () => { supabase.auth.signOut(); onClose(); };
-  return (
-    <div className={`fixed inset-0 z-[110] overflow-y-auto ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
-      <header className="p-4 border-b flex items-center gap-4 sticky top-0 z-10">
-        <ChevronLeft onClick={onClose} className="cursor-pointer" /><h2 className="font-black uppercase">Settings</h2>
-      </header>
-      <div className="p-6 space-y-8">
-        <section>
-          <h3 className="text-gray-400 text-[10px] font-black uppercase mb-4">Appearance</h3>
-          <button onClick={() => setDarkMode(!darkMode)} className={`w-full flex justify-between items-center p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-            <span className="text-sm font-bold">Dark Mode</span>
-            <div className={`w-10 h-6 rounded-full relative ${darkMode ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${darkMode ? 'right-1' : 'left-1'}`} /></div>
-          </button>
-        </section>
-        <section><button onClick={handleLogout} className="w-full p-4 rounded-2xl bg-red-50 text-red-500 font-black uppercase text-xs tracking-widest">Logout</button></section>
-      </div>
     </div>
   );
 }
@@ -471,10 +538,10 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end justify-center">
       <div className={`w-full max-w-md rounded-t-[2.5rem] max-h-[80vh] flex flex-col ${darkMode ? 'bg-black text-white' : 'bg-white'}`}>
-        <div className="p-6 border-b flex justify-between items-center"><h3 className="font-black uppercase">{type}</h3><X onClick={onClose} className="cursor-pointer" /></div>
+        <div className="p-6 border-b flex justify-between items-center"><h3 className="font-black uppercase tracking-widest">{type}</h3><X onClick={onClose} className="cursor-pointer" /></div>
         <div className="overflow-y-auto p-4 space-y-2">
           {list.map(u => (
-            <div key={u.id} className="flex items-center gap-4 cursor-pointer p-3 rounded-2xl hover:bg-gray-50/10" onClick={() => openProfile(u.id)}>
+            <div key={u.id} className="flex items-center gap-4 cursor-pointer p-3 rounded-2xl hover:bg-gray-50/10" onClick={() => { onClose(); openProfile(u.id); }}>
               <img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover" />
               <div className="flex-grow"><p className="font-black text-sm">{u.display_name}</p><p className="text-gray-400 text-xs font-bold">@{u.username}</p></div>
             </div>
@@ -512,9 +579,9 @@ function AuthScreen({ fetchData }) {
         {!isLogin && <input type="text" placeholder="DISPLAY NAME" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />}
         <input type="email" placeholder="EMAIL" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input type="password" placeholder="PASSWORD" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        <button type="submit" className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase text-xs">Login</button>
+        <button type="submit" className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">Login</button>
       </form>
-      <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase">{isLogin ? "Create Account" : "Login"}</button>
+      <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Login"}</button>
     </div>
   );
-        }
+                                                                                                                                                                                                                                                                             }
