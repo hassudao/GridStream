@@ -519,8 +519,8 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
     
     if (!error) {
       setCommentText('');
-      await fetchComments(); // コメント一覧を更新
-      await fetchData();     // 親コンポーネントのカウントも更新
+      await fetchComments(); // コメント一覧を即座に更新
+      await fetchData();     // ホーム画面のカウントも更新
     } else {
       alert("Comment failed: " + error.message);
     }
@@ -557,6 +557,7 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
           </div>
         </div>
 
+        {/* コメント一覧のループ表示 */}
         <div className="pb-24">
           {comments.length === 0 ? (
             <p className="text-center py-10 text-gray-400 text-xs font-black uppercase tracking-widest">No replies yet</p>
@@ -579,9 +580,6 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
                     <span className="text-gray-400 text-[11px] font-bold">@{comment.profiles?.username || 'unknown'}</span>
                   </div>
                   <p className="text-[14px] font-medium leading-relaxed">{comment.content}</p>
-                  <div className="flex gap-4 mt-3 text-gray-400">
-                    <Heart size={14} className="hover:text-red-500 transition cursor-pointer" />
-                  </div>
                 </div>
               </div>
             ))
@@ -728,4 +726,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-                                                                                                                                                      }
+        }
