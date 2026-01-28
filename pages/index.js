@@ -81,6 +81,12 @@ export default function App() {
         is_liked: user ? post.likes?.some(l => l.user_id === user.id) : false
       }));
       setPosts(formattedPosts);
+
+      // モーダルが開いている場合、モーダル内の投稿データも同期させる
+      if (selectedPost) {
+        const updatedSelectedPost = formattedPosts.find(p => p.id === selectedPost.id);
+        if (updatedSelectedPost) setSelectedPost(updatedSelectedPost);
+      }
     }
     
     const { data: profData } = await supabase.from('profiles').select('*');
@@ -224,7 +230,7 @@ export default function App() {
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
-      {selectedPost && <PostThreadView post={selectedPost} onClose={() => { setSelectedPost(null); fetchData(); }} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} fetchData={fetchData} />}
+      {selectedPost && <PostDetailModal post={selectedPost} onClose={() => { setSelectedPost(null); fetchData(); }} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} fetchData={fetchData} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
       {view === 'home' && (
@@ -487,25 +493,22 @@ function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser,
   );
 }
 
-function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLike, currentUser, darkMode, fetchData }) {
+function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLike, currentUser, darkMode, fetchData }) {
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(false);
+  const isMyPost = currentUser && post.user_id === currentUser.id;
 
   useEffect(() => {
-    if (post?.id) {
-      fetchComments();
-    }
+    if (post?.id) fetchComments();
   }, [post?.id]);
 
   async function fetchComments() {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('comments')
       .select('*, profiles(id, username, display_name, avatar_url)')
       .eq('post_id', post.id)
       .order('created_at', { ascending: true });
-    
-    if (error) console.error("Comment fetch error:", error);
     if (data) setComments(data);
   }
 
@@ -516,13 +519,10 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
     const { error } = await supabase.from('comments').insert([
       { content: commentText, post_id: post.id, user_id: currentUser.id }
     ]);
-    
     if (!error) {
       setCommentText('');
-      await fetchComments(); // コメント一覧を即座に更新
-      await fetchData();     // ホーム画面のカウントも更新
-    } else {
-      alert("Comment failed: " + error.message);
+      await fetchComments();
+      await fetchData(); // 親コンポーネントのカウントも更新
     }
     setLoading(false);
   }
@@ -535,6 +535,7 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
       </header>
       
       <div className="flex-grow overflow-y-auto">
+        {/* 親ポスト表示エリア */}
         <div className="p-4 border-b">
           <div className="flex gap-3 mb-4">
             <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-12 h-12 rounded-full object-cover cursor-pointer" onClick={() => openProfile(post.profiles?.id)} />
@@ -545,8 +546,12 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
           </div>
           <p className="text-lg font-medium leading-relaxed whitespace-pre-wrap mb-4">{post.content}</p>
           {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border border-gray-100/10" />}
+          
           <div className="flex gap-6 py-4 border-y border-gray-100/10 text-gray-400">
-            <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500' : ''}`}>
+            <button 
+              onClick={() => onLike(post.id, post.is_liked)} 
+              className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500' : ''}`}
+            >
               <Heart size={20} fill={post.is_liked ? "currentColor" : "none"} />
               <span className="font-black text-sm">{post.like_count || 0}</span>
             </button>
@@ -557,7 +562,7 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
           </div>
         </div>
 
-        {/* コメント一覧のループ表示 */}
+        {/* コメント表示エリア */}
         <div className="pb-24">
           {comments.length === 0 ? (
             <p className="text-center py-10 text-gray-400 text-xs font-black uppercase tracking-widest">No replies yet</p>
@@ -565,19 +570,13 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
             comments.map((comment, index) => (
               <div key={comment.id} className="p-4 flex gap-3 relative">
                 <div className="flex flex-col items-center">
-                  <img 
-                    src={getAvatar(comment.profiles?.username, comment.profiles?.avatar_url)} 
-                    className="w-10 h-10 rounded-full object-cover shrink-0 z-10 cursor-pointer" 
-                    onClick={() => openProfile(comment.profiles?.id)}
-                  />
-                  {index !== comments.length - 1 && (
-                    <div className={`w-[2px] flex-grow my-1 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}></div>
-                  )}
+                  <img src={getAvatar(comment.profiles?.username, comment.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover shrink-0 z-10" />
+                  {index !== comments.length - 1 && <div className={`w-[2px] flex-grow my-1 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}></div>}
                 </div>
                 <div className="flex-grow pb-4">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-black text-sm">{comment.profiles?.display_name || 'User'}</span>
-                    <span className="text-gray-400 text-[11px] font-bold">@{comment.profiles?.username || 'unknown'}</span>
+                    <span className="font-black text-sm">{comment.profiles?.display_name}</span>
+                    <span className="text-gray-400 text-[11px] font-bold">@{comment.profiles?.username}</span>
                   </div>
                   <p className="text-[14px] font-medium leading-relaxed">{comment.content}</p>
                 </div>
@@ -587,6 +586,7 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
         </div>
       </div>
 
+      {/* コメント入力エリア */}
       <div className={`p-4 border-t sticky bottom-0 ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-100'}`}>
         <form onSubmit={handlePostComment} className="flex gap-3 items-center">
           <input 
@@ -596,11 +596,7 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
           />
-          <button 
-            type="submit" 
-            disabled={!commentText.trim() || loading} 
-            className="text-blue-600 font-black text-xs uppercase tracking-widest disabled:opacity-30"
-          >
+          <button type="submit" disabled={!commentText.trim() || loading} className="text-blue-600 font-black text-xs uppercase tracking-widest">
             {loading ? '...' : 'Stream'}
           </button>
         </form>
@@ -726,4 +722,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-        }
+                                              }
