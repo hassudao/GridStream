@@ -32,7 +32,6 @@ export default function App() {
   const avatarInputRef = useRef(null);
   const headerInputRef = useRef(null);
 
-  // 初回ロードとユーザー状態監視
   useEffect(() => {
     checkUser();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -45,7 +44,6 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ユーザー情報が変わった時に投稿データを取得
   useEffect(() => {
     fetchData();
   }, [user]);
@@ -226,7 +224,7 @@ export default function App() {
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
-      {selectedPost && <PostDetailModal post={selectedPost} onClose={() => { setSelectedPost(null); fetchData(); }} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} />}
+      {selectedPost && <PostThreadView post={selectedPost} onClose={() => { setSelectedPost(null); fetchData(); }} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
       {view === 'home' && (
@@ -489,11 +487,12 @@ function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser,
   );
 }
 
-function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLike, currentUser, darkMode }) {
-  const isMyPost = currentUser && post.user_id === currentUser.id;
+// コメントをツリー（スレッド）形式で表示するビュー
+function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLike, currentUser, darkMode }) {
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(false);
+  const scrollRef = useRef();
 
   useEffect(() => {
     fetchComments();
@@ -502,7 +501,7 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
   async function fetchComments() {
     const { data } = await supabase
       .from('comments')
-      .select('*, profiles(username, display_name, avatar_url)')
+      .select('*, profiles(id, username, display_name, avatar_url)')
       .eq('post_id', post.id)
       .order('created_at', { ascending: true });
     if (data) setComments(data);
@@ -523,58 +522,86 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
   }
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-start overflow-y-auto pt-10 pb-10 px-4">
-      <div className="w-full max-w-md flex justify-end mb-4">
-        <button onClick={onClose} className="text-white p-2 hover:bg-white/10 rounded-full transition"><X size={28}/></button>
-      </div>
-      <div className={`w-full max-w-md rounded-[2.5rem] overflow-hidden flex flex-col ${darkMode ? 'bg-gray-900 text-white' : 'bg-white text-black'}`}>
-        <div className={`p-5 border-b flex items-center justify-between ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-          <div className="flex items-center gap-3">
-            <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
-            <div className="flex flex-col"><p className="font-black text-sm">{post.profiles?.display_name}</p><p className="text-gray-400 text-xs font-bold">@{post.profiles?.username}</p></div>
+    <div className={`fixed inset-0 z-[100] animate-in slide-in-from-right duration-300 flex flex-col ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
+      <header className={`p-4 border-b flex items-center gap-4 sticky top-0 z-10 backdrop-blur-md ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-50'}`}>
+        <ChevronLeft onClick={onClose} className="cursor-pointer" />
+        <h2 className="font-black uppercase tracking-tighter">Thread</h2>
+      </header>
+      
+      <div className="flex-grow overflow-y-auto">
+        {/* 元の投稿 */}
+        <div className="p-4 border-b">
+          <div className="flex gap-3 mb-4">
+            <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-12 h-12 rounded-full object-cover cursor-pointer" onClick={() => openProfile(post.profiles.id)} />
+            <div className="flex flex-col justify-center">
+              <span className="font-black text-[15px]">{post.profiles?.display_name}</span>
+              <span className="text-gray-400 text-xs font-bold">@{post.profiles?.username}</span>
+            </div>
           </div>
-          {isMyPost && <button onClick={() => { onDelete(post.id); onClose(); }} className="text-gray-400 hover:text-red-500 transition"><Trash2 size={20}/></button>}
+          <p className="text-lg font-medium leading-relaxed whitespace-pre-wrap mb-4">{post.content}</p>
+          {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border border-gray-100/10" />}
+          <div className="flex gap-6 py-4 border-y border-gray-100/10 text-gray-400">
+            <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500' : ''}`}>
+              <Heart size={20} fill={post.is_liked ? "currentColor" : "none"} />
+              <span className="font-black text-sm">{post.like_count || 0}</span>
+            </button>
+            <div className="flex items-center gap-1.5">
+              <MessageCircle size={20} />
+              <span className="font-black text-sm">{comments.length}</span>
+            </div>
+          </div>
         </div>
-        <div className="p-5">
-          {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
-          <p className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{post.content}</p>
-          <div className="flex items-center gap-6 border-y py-3 mb-4 border-gray-100/10">
-             <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500' : 'text-gray-400'}`}>
-               <Heart size={20} fill={post.is_liked ? "currentColor" : "none"} />
-               <span className="font-black text-sm">{post.like_count || 0}</span>
-             </button>
-             <div className="flex items-center gap-1.5 text-gray-400">
-               <MessageCircle size={20} />
-               <span className="font-black text-sm">{comments.length}</span>
-             </div>
-          </div>
 
-          <div className="space-y-4 mb-6">
-            {comments.map(comment => (
-              <div key={comment.id} className="flex gap-3">
-                <img src={getAvatar(comment.profiles?.username, comment.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover shrink-0" />
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="font-black text-xs">{comment.profiles?.display_name}</span>
-                    <span className="text-gray-400 text-[10px]">@{comment.profiles?.username}</span>
-                  </div>
-                  <p className="text-sm font-medium mt-0.5">{comment.content}</p>
+        {/* コメントツリー */}
+        <div className="pb-24">
+          {comments.map((comment, index) => (
+            <div key={comment.id} className="p-4 flex gap-3 relative">
+              {/* ツリーの線（最後以外） */}
+              <div className="flex flex-col items-center">
+                <img 
+                  src={getAvatar(comment.profiles?.username, comment.profiles?.avatar_url)} 
+                  className="w-10 h-10 rounded-full object-cover shrink-0 z-10 cursor-pointer" 
+                  onClick={() => openProfile(comment.profiles.id)}
+                />
+                {index !== comments.length - 1 && (
+                  <div className={`w-[2px] flex-grow my-1 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}></div>
+                )}
+              </div>
+              <div className="flex-grow pb-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="font-black text-sm">{comment.profiles?.display_name}</span>
+                  <span className="text-gray-400 text-[11px] font-bold">@{comment.profiles?.username}</span>
+                </div>
+                <p className="text-[14px] font-medium leading-relaxed">{comment.content}</p>
+                <div className="flex gap-4 mt-3 text-gray-400">
+                  <Heart size={14} className="hover:text-red-500 transition cursor-pointer" />
+                  <AtSign size={14} className="hover:text-blue-500 transition cursor-pointer" />
                 </div>
               </div>
-            ))}
-          </div>
-
-          <form onSubmit={handlePostComment} className="flex gap-2 sticky bottom-0 bg-transparent pt-2">
-            <input 
-              type="text" 
-              placeholder="Reply to this thread..." 
-              className={`flex-grow p-3 rounded-xl text-sm outline-none ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-            />
-            <button type="submit" disabled={!commentText.trim() || loading} className="text-blue-500 font-black text-xs uppercase px-2">Post</button>
-          </form>
+            </div>
+          ))}
         </div>
+      </div>
+
+      {/* 固定コメント入力欄 */}
+      <div className={`p-4 border-t sticky bottom-0 ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-100'}`}>
+        <form onSubmit={handlePostComment} className="flex gap-3 items-center">
+          <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-8 h-8 rounded-full" />
+          <input 
+            type="text" 
+            placeholder="Reply to this stream..." 
+            className={`flex-grow p-3 rounded-2xl text-sm outline-none font-medium ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`}
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+          />
+          <button 
+            type="submit" 
+            disabled={!commentText.trim() || loading} 
+            className="text-blue-600 font-black text-xs uppercase tracking-widest disabled:opacity-30"
+          >
+            Stream
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -697,4 +724,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-                                              }
+       }
