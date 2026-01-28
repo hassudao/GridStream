@@ -224,7 +224,7 @@ export default function App() {
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
-      {selectedPost && <PostThreadView post={selectedPost} onClose={() => { setSelectedPost(null); fetchData(); }} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} />}
+      {selectedPost && <PostThreadView post={selectedPost} onClose={() => { setSelectedPost(null); fetchData(); }} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} currentUser={user} darkMode={darkMode} fetchData={fetchData} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
       {view === 'home' && (
@@ -487,11 +487,10 @@ function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser,
   );
 }
 
-function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLike, currentUser, darkMode }) {
+function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLike, currentUser, darkMode, fetchData }) {
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(false);
-  const scrollRef = useRef();
 
   useEffect(() => {
     if (post?.id) {
@@ -500,11 +499,13 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
   }, [post?.id]);
 
   async function fetchComments() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('comments')
       .select('*, profiles(id, username, display_name, avatar_url)')
       .eq('post_id', post.id)
       .order('created_at', { ascending: true });
+    
+    if (error) console.error("Comment fetch error:", error);
     if (data) setComments(data);
   }
 
@@ -515,9 +516,13 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
     const { error } = await supabase.from('comments').insert([
       { content: commentText, post_id: post.id, user_id: currentUser.id }
     ]);
+    
     if (!error) {
       setCommentText('');
-      fetchComments();
+      await fetchComments(); // コメント一覧を更新
+      await fetchData();     // 親コンポーネントのカウントも更新
+    } else {
+      alert("Comment failed: " + error.message);
     }
     setLoading(false);
   }
@@ -553,30 +558,34 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
         </div>
 
         <div className="pb-24">
-          {comments.map((comment, index) => (
-            <div key={comment.id} className="p-4 flex gap-3 relative">
-              <div className="flex flex-col items-center">
-                <img 
-                  src={getAvatar(comment.profiles?.username, comment.profiles?.avatar_url)} 
-                  className="w-10 h-10 rounded-full object-cover shrink-0 z-10 cursor-pointer" 
-                  onClick={() => openProfile(comment.profiles?.id)}
-                />
-                {index !== comments.length - 1 && (
-                  <div className={`w-[2px] flex-grow my-1 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}></div>
-                )}
-              </div>
-              <div className="flex-grow pb-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-black text-sm">{comment.profiles?.display_name}</span>
-                  <span className="text-gray-400 text-[11px] font-bold">@{comment.profiles?.username}</span>
+          {comments.length === 0 ? (
+            <p className="text-center py-10 text-gray-400 text-xs font-black uppercase tracking-widest">No replies yet</p>
+          ) : (
+            comments.map((comment, index) => (
+              <div key={comment.id} className="p-4 flex gap-3 relative">
+                <div className="flex flex-col items-center">
+                  <img 
+                    src={getAvatar(comment.profiles?.username, comment.profiles?.avatar_url)} 
+                    className="w-10 h-10 rounded-full object-cover shrink-0 z-10 cursor-pointer" 
+                    onClick={() => openProfile(comment.profiles?.id)}
+                  />
+                  {index !== comments.length - 1 && (
+                    <div className={`w-[2px] flex-grow my-1 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}></div>
+                  )}
                 </div>
-                <p className="text-[14px] font-medium leading-relaxed">{comment.content}</p>
-                <div className="flex gap-4 mt-3 text-gray-400">
-                  <Heart size={14} className="hover:text-red-500 transition cursor-pointer" />
+                <div className="flex-grow pb-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-black text-sm">{comment.profiles?.display_name || 'User'}</span>
+                    <span className="text-gray-400 text-[11px] font-bold">@{comment.profiles?.username || 'unknown'}</span>
+                  </div>
+                  <p className="text-[14px] font-medium leading-relaxed">{comment.content}</p>
+                  <div className="flex gap-4 mt-3 text-gray-400">
+                    <Heart size={14} className="hover:text-red-500 transition cursor-pointer" />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
@@ -594,7 +603,7 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
             disabled={!commentText.trim() || loading} 
             className="text-blue-600 font-black text-xs uppercase tracking-widest disabled:opacity-30"
           >
-            Stream
+            {loading ? '...' : 'Stream'}
           </button>
         </form>
       </div>
