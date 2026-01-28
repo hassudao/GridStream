@@ -454,10 +454,10 @@ function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser,
   const isMyPost = currentUser && post.user_id === currentUser.id;
   return (
     <article className={`p-4 flex gap-3 hover:bg-gray-50/5 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-      <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles.id)} />
+      <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles?.id)} />
       <div className="flex-grow min-w-0">
         <div className="flex justify-between items-start">
-          <div className="flex flex-col cursor-pointer mb-1" onClick={() => openProfile(post.profiles.id)}>
+          <div className="flex flex-col cursor-pointer mb-1" onClick={() => openProfile(post.profiles?.id)}>
             <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
             <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
           </div>
@@ -487,7 +487,6 @@ function PostCard({ post, openProfile, getAvatar, onDelete, onLike, currentUser,
   );
 }
 
-// コメントをツリー（スレッド）形式で表示するビュー
 function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLike, currentUser, darkMode }) {
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
@@ -495,8 +494,10 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
   const scrollRef = useRef();
 
   useEffect(() => {
-    fetchComments();
-  }, [post.id]);
+    if (post?.id) {
+      fetchComments();
+    }
+  }, [post?.id]);
 
   async function fetchComments() {
     const { data } = await supabase
@@ -529,10 +530,9 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
       </header>
       
       <div className="flex-grow overflow-y-auto">
-        {/* 元の投稿 */}
         <div className="p-4 border-b">
           <div className="flex gap-3 mb-4">
-            <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-12 h-12 rounded-full object-cover cursor-pointer" onClick={() => openProfile(post.profiles.id)} />
+            <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-12 h-12 rounded-full object-cover cursor-pointer" onClick={() => openProfile(post.profiles?.id)} />
             <div className="flex flex-col justify-center">
               <span className="font-black text-[15px]">{post.profiles?.display_name}</span>
               <span className="text-gray-400 text-xs font-bold">@{post.profiles?.username}</span>
@@ -552,16 +552,14 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
           </div>
         </div>
 
-        {/* コメントツリー */}
         <div className="pb-24">
           {comments.map((comment, index) => (
             <div key={comment.id} className="p-4 flex gap-3 relative">
-              {/* ツリーの線（最後以外） */}
               <div className="flex flex-col items-center">
                 <img 
                   src={getAvatar(comment.profiles?.username, comment.profiles?.avatar_url)} 
                   className="w-10 h-10 rounded-full object-cover shrink-0 z-10 cursor-pointer" 
-                  onClick={() => openProfile(comment.profiles.id)}
+                  onClick={() => openProfile(comment.profiles?.id)}
                 />
                 {index !== comments.length - 1 && (
                   <div className={`w-[2px] flex-grow my-1 ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}></div>
@@ -575,7 +573,6 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
                 <p className="text-[14px] font-medium leading-relaxed">{comment.content}</p>
                 <div className="flex gap-4 mt-3 text-gray-400">
                   <Heart size={14} className="hover:text-red-500 transition cursor-pointer" />
-                  <AtSign size={14} className="hover:text-blue-500 transition cursor-pointer" />
                 </div>
               </div>
             </div>
@@ -583,10 +580,8 @@ function PostThreadView({ post, onClose, getAvatar, openProfile, onDelete, onLik
         </div>
       </div>
 
-      {/* 固定コメント入力欄 */}
       <div className={`p-4 border-t sticky bottom-0 ${darkMode ? 'bg-black border-gray-800' : 'bg-white border-gray-100'}`}>
         <form onSubmit={handlePostComment} className="flex gap-3 items-center">
-          <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-8 h-8 rounded-full" />
           <input 
             type="text" 
             placeholder="Reply to this stream..." 
@@ -724,4 +719,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-       }
+        }
