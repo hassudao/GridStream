@@ -81,25 +81,48 @@ export default function App() {
         is_liked: user ? post.likes?.some(l => l.user_id === user.id) : false
       }));
       setPosts(formattedPosts);
+
+      // ポップアップが開いている場合、最新データに同期
+      if (selectedPost) {
+        const updatedSelected = formattedPosts.find(p => p.id === selectedPost.id);
+        if (updatedSelected) setSelectedPost(updatedSelected);
+      }
     }
     
     const { data: profData } = await supabase.from('profiles').select('*');
     if (profData) setAllProfiles(profData);
   }
 
+  // いいね機能（タイムライン・ポップアップ共通ロジック）
   async function toggleLike(postId, isLiked) {
     if (!user) return;
-    setPosts(prev => prev.map(p => {
+
+    // 1. UIを即座に更新 (Optimistic Update)
+    const updateLogic = (p) => {
       if (p.id === postId) {
-        return { ...p, is_liked: !isLiked, like_count: isLiked ? p.like_count - 1 : p.like_count + 1 };
+        return { 
+          ...p, 
+          is_liked: !isLiked, 
+          like_count: isLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1 
+        };
       }
       return p;
-    }));
+    };
+
+    setPosts(prev => prev.map(updateLogic));
+    
+    if (selectedPost && selectedPost.id === postId) {
+      setSelectedPost(prev => updateLogic(prev));
+    }
+
+    // 2. データベース更新
     if (isLiked) {
       await supabase.from('likes').delete().eq('post_id', postId).eq('user_id', user.id);
     } else {
       await supabase.from('likes').insert([{ post_id: postId, user_id: user.id }]);
     }
+
+    // 3. 最終的な整合性を取るために再取得
     fetchData();
   }
 
@@ -513,7 +536,7 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
     } else {
       setCommentText('');
       await fetchComments();
-      refreshPosts(); // 親のカウントを更新
+      refreshPosts(); 
     }
     setLoading(false);
   }
@@ -534,14 +557,18 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
           <div className="p-5 border-b">
             {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
             <p className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{post.content}</p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-6 text-gray-400">
                <button 
                  onClick={() => onLike(post.id, post.is_liked)} 
-                 className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500' : 'text-gray-400'}`}
+                 className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'hover:text-red-500'}`}
                >
                  <Heart size={20} fill={post.is_liked ? "currentColor" : "none"} />
-                 <span className="font-black">{post.like_count || 0} Likes</span>
+                 <span className="font-black text-sm">{post.like_count || 0}</span>
                </button>
+               <div className="flex items-center gap-1.5">
+                 <MessageSquare size={20} />
+                 <span className="font-black text-sm">{post.comment_count || 0}</span>
+               </div>
             </div>
           </div>
 
@@ -703,4 +730,4 @@ function AuthScreen({ fetchData, validateProfile }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Back to Login"}</button>
     </div>
   );
-       }
+        }
