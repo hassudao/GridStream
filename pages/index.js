@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, Save, UserCheck, AtSign, AlignLeft } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, Save, UserCheck, AtSign, AlignLeft, Lock, Mail } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -81,7 +81,6 @@ export default function App() {
     if (profData) setAllProfiles(profData);
   }
 
-  // --- プロフィール更新処理 ---
   async function handleUpdateProfile() {
     setUploading(true);
     let { avatar_url, header_url } = editData;
@@ -226,27 +225,34 @@ export default function App() {
         </div>
       )}
 
-      {/* プロフィール画面（編集含む） */}
+      {/* プロフィール画面 */}
       {view === 'profile' && profileInfo && (
         <div className="animate-in fade-in pb-10">
           {isEditing ? (
             /* 編集画面 */
-            <div className="p-4 space-y-6">
-              <header className="flex justify-between items-center mb-6">
+            <div className="space-y-6">
+              <header className="p-4 flex justify-between items-center sticky top-0 z-10 bg-inherit/90 backdrop-blur-md border-b">
                 <button onClick={() => setIsEditing(false)}><X size={24}/></button>
                 <h2 className="font-black uppercase tracking-widest">Edit Profile</h2>
                 <button onClick={handleUpdateProfile} disabled={uploading} className="bg-blue-600 text-white px-4 py-1.5 rounded-full text-xs font-black uppercase">{uploading ? '...' : 'Save'}</button>
               </header>
-              <div className="space-y-4">
-                <div className="flex flex-col items-center gap-2">
+              <div className="relative h-44 bg-gray-200">
+                <img src={editData.header_url || 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&q=80'} className="w-full h-full object-cover" />
+                <div onClick={() => headerInputRef.current.click()} className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer opacity-80 hover:opacity-100 transition">
+                  <Camera className="text-white" />
+                  <input type="file" ref={headerInputRef} className="hidden" accept="image/*" />
+                </div>
+              </div>
+              <div className="px-4 space-y-4">
+                <div className="flex flex-col items-center gap-2 -mt-12 relative z-10">
                   <div className="relative group" onClick={() => avatarInputRef.current.click()}>
-                    <img src={getAvatar(editData.username, editData.avatar_url)} className="w-24 h-24 rounded-full object-cover border-4 border-blue-500 cursor-pointer" />
+                    <img src={getAvatar(editData.username, editData.avatar_url)} className="w-24 h-24 rounded-full object-cover border-4 border-blue-500 cursor-pointer bg-white" />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><Camera className="text-white"/></div>
                     <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" />
                   </div>
-                  <p className="text-[10px] font-black text-gray-400 uppercase">Change Photo</p>
+                  <p className="text-[10px] font-black text-gray-400 uppercase">Change Avatar</p>
                 </div>
-                <div className="space-y-4">
+                <div className="space-y-4 pt-4">
                   <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
                     <label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2 mb-1"><UserCheck size={12}/> Display Name</label>
                     <input className="w-full bg-transparent outline-none font-bold" value={editData.display_name} onChange={e => setEditData({...editData, display_name: e.target.value})} />
@@ -315,18 +321,44 @@ export default function App() {
 // --- 以下、コンポーネント ---
 
 function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
+  const [newEmail, setNewEmail] = useState(user.email);
+  const [newPassword, setNewPassword] = useState('');
+  const [updating, setUpdating] = useState(false);
+
   const handleLogout = () => { supabase.auth.signOut(); onClose(); };
+  
+  const handleUpdateAuth = async () => {
+    setUpdating(true);
+    const updates = {};
+    if (newEmail !== user.email) updates.email = newEmail;
+    if (newPassword) updates.password = newPassword;
+
+    const { error } = await supabase.auth.updateUser(updates);
+    if (error) alert(error.message);
+    else alert('アカウント情報を更新しました。');
+    setUpdating(false);
+  };
+
   return (
-    <div className={`fixed inset-0 z-[110] animate-in slide-in-from-bottom duration-300 ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
-      <header className="p-4 border-b flex items-center gap-4 sticky top-0 z-10">
+    <div className={`fixed inset-0 z-[110] animate-in slide-in-from-bottom duration-300 overflow-y-auto pb-10 ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
+      <header className="p-4 border-b flex items-center gap-4 sticky top-0 z-10 bg-inherit">
         <ChevronLeft onClick={onClose} className="cursor-pointer" /><h2 className="font-black uppercase tracking-widest">Settings</h2>
       </header>
       <div className="p-6 space-y-8">
         <section>
-          <h3 className="text-gray-400 text-[10px] font-black uppercase mb-4 tracking-widest">Account</h3>
-          <div className={`p-4 rounded-2xl space-y-3 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-            <div><p className="text-[10px] text-gray-400 font-black uppercase">Email</p><p className="font-bold text-sm">{user.email}</p></div>
-            <div><p className="text-[10px] text-gray-400 font-black uppercase">User ID</p><p className="font-bold text-sm text-blue-500">@{myProfile.username}</p></div>
+          <h3 className="text-gray-400 text-[10px] font-black uppercase mb-4 tracking-widest">Account Security</h3>
+          <div className={`p-4 rounded-2xl space-y-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+            <div>
+              <label className="text-[10px] text-gray-400 font-black uppercase flex items-center gap-1 mb-1"><Mail size={12}/> Email Address</label>
+              <input className="w-full bg-transparent outline-none font-bold text-sm" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[10px] text-gray-400 font-black uppercase flex items-center gap-1 mb-1"><Lock size={12}/> New Password</label>
+              <input type="password" placeholder="********" className="w-full bg-transparent outline-none font-bold text-sm" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+            </div>
+            <button onClick={handleUpdateAuth} disabled={updating} className="w-full bg-blue-600 text-white py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">
+              {updating ? 'Updating...' : 'Update Credentials'}
+            </button>
           </div>
         </section>
 
@@ -584,4 +616,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Login"}</button>
     </div>
   );
-        }
+       }
