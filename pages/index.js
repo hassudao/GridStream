@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, Save, UserCheck, AtSign, AlignLeft, Lock, Mail, Clock, UserPlus, UserMinus, Plus } from 'lucide-react';
+import { 
+  Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, 
+  User as UserIcon, Grid, List, Image as ImageIcon, Send, ChevronLeft, 
+  Zap, LogOut, Settings, Trash2, MessageSquare, Save, UserCheck, AtSign, 
+  AlignLeft, Lock, Mail, Clock, UserPlus, UserMinus, Plus, 
+  Type, Smile, Music, Crop, MoreHorizontal, ChevronRight, Star 
+} from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -14,9 +20,9 @@ const formatTime = (dateStr) => {
 export default function App() {
   const [view, setView] = useState('home'); 
   const [posts, setPosts] = useState([]);
-  const [stories, setStories] = useState([]); // ストーリーデータ
-  const [groupedStories, setGroupedStories] = useState({}); // ユーザーごとのストーリー
-  const [viewingStory, setViewingStory] = useState(null); // ストーリー閲覧モード
+  const [stories, setStories] = useState([]); 
+  const [groupedStories, setGroupedStories] = useState({});
+  const [viewingStory, setViewingStory] = useState(null); 
   const [allProfiles, setAllProfiles] = useState([]);
   const [user, setUser] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
@@ -33,6 +39,10 @@ export default function App() {
   const [selectedPost, setSelectedPost] = useState(null);
   const [uploading, setUploading] = useState(false);
   
+  // ストーリー編集モード用
+  const [storyDraft, setStoryDraft] = useState(null); // { file, previewUrl }
+  const [isStoryEditorOpen, setIsStoryEditorOpen] = useState(false);
+
   const fileInputRef = useRef(null);
   const storyInputRef = useRef(null);
   const avatarInputRef = useRef(null);
@@ -50,7 +60,6 @@ export default function App() {
 
   useEffect(() => { fetchData(); }, [user]);
 
-  // ストーリーのグループ化ロジック
   useEffect(() => {
     if (stories.length > 0 && allProfiles.length > 0) {
       const grouped = stories.reduce((acc, story) => {
@@ -76,7 +85,6 @@ export default function App() {
   }
 
   async function fetchData() {
-    // 投稿の取得
     const { data: postsData } = await supabase
       .from('posts')
       .select(`*, profiles(id, username, display_name, avatar_url), likes(user_id), comments(id)`)
@@ -92,7 +100,6 @@ export default function App() {
       setPosts(formattedPosts);
     }
 
-    // ストーリーの取得 (24時間以内)
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: storiesData } = await supabase
       .from('stories')
@@ -115,16 +122,32 @@ export default function App() {
     return data.secure_url;
   }
 
-  // ストーリー投稿
-  async function handleStoryUpload(e) {
+  // ストーリー画像選択時
+  const handleStoryFileSelect = (e) => {
     const file = e.target.files[0];
-    if (!file || !user) return;
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setStoryDraft({ file, previewUrl });
+    setIsStoryEditorOpen(true);
+    e.target.value = ''; // Reset input
+  };
+
+  // ストーリー投稿実行 (Editorから呼ばれる)
+  const handlePostStory = async () => {
+    if (!storyDraft?.file || !user) return;
     setUploading(true);
-    const imageUrl = await uploadToCloudinary(file);
-    await supabase.from('stories').insert([{ user_id: user.id, image_url: imageUrl }]);
-    setUploading(false);
-    fetchData(); // リフレッシュ
-  }
+    try {
+      const imageUrl = await uploadToCloudinary(storyDraft.file);
+      await supabase.from('stories').insert([{ user_id: user.id, image_url: imageUrl }]);
+      setIsStoryEditorOpen(false);
+      setStoryDraft(null);
+      fetchData();
+    } catch (error) {
+      console.error('Story upload failed', error);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   async function handleUpdateProfile() {
     setUploading(true);
@@ -209,7 +232,19 @@ export default function App() {
     <div className={`max-w-md mx-auto min-h-screen pb-20 border-x font-sans relative shadow-2xl transition-colors duration-300 ${darkMode ? 'bg-black text-white border-gray-800' : 'bg-white text-black border-gray-100'}`}>
       <script src="https://cdn.tailwindcss.com"></script>
 
-      {/* ストーリービューアー (モーダル) */}
+      {/* --- ストーリー編集画面 (Instagram風) --- */}
+      {isStoryEditorOpen && storyDraft && (
+        <StoryEditor 
+          draft={storyDraft}
+          onClose={() => { setIsStoryEditorOpen(false); setStoryDraft(null); }}
+          onPost={handlePostStory}
+          myProfile={myProfile}
+          getAvatar={getAvatar}
+          uploading={uploading}
+        />
+      )}
+
+      {/* ストーリー閲覧ビューアー */}
       {viewingStory && (
         <StoryViewer 
           stories={groupedStories[viewingStory.userId]} 
@@ -228,25 +263,47 @@ export default function App() {
       {/* ホーム画面 */}
       {view === 'home' && (
         <div className="animate-in fade-in">
-          <header className={`sticky top-0 z-30 backdrop-blur-md border-b p-4 flex justify-between items-center ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-50'}`}>
+          <header className={`sticky top-0 z-30 backdrop-blur-md border-b px-4 py-3 flex justify-between items-center ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-50'}`}>
             <h1 className="text-2xl font-black bg-gradient-to-r from-blue-700 to-cyan-500 bg-clip-text text-transparent italic tracking-tighter uppercase flex items-center gap-1">
               <Zap size={24} className="text-blue-600 fill-blue-600" /> GridStream
             </h1>
-            <MessageCircle size={24} className="cursor-pointer" onClick={() => setView('messages')} />
+            <div className="flex gap-4">
+               <Heart size={24} className="cursor-pointer" />
+               <MessageCircle size={24} className="cursor-pointer" onClick={() => setView('messages')} />
+            </div>
           </header>
 
-          {/* ストーリーズトレイ */}
-          <div className={`p-4 overflow-x-auto whitespace-nowrap scrollbar-hide flex gap-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-            {/* 自分のストーリー追加ボタン */}
-            <div className="inline-flex flex-col items-center gap-1 cursor-pointer relative" onClick={() => !uploading && storyInputRef.current.click()}>
-              <div className="relative">
-                <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className={`w-16 h-16 rounded-full object-cover border-2 p-0.5 ${groupedStories[user.id] ? 'border-blue-500' : 'border-transparent'}`} />
+          {/* ストーリーズトレイ (Instagram風 UI) */}
+          <div className={`pt-4 pb-2 overflow-x-auto whitespace-nowrap scrollbar-hide flex gap-4 px-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
+            
+            {/* 自分のストーリー (Add or View) */}
+            <div className="flex flex-col items-center gap-1 cursor-pointer flex-shrink-0 relative">
+              <div 
+                className="relative"
+                onClick={() => {
+                  // ストーリーがあれば見る、なければ追加。ここでは「追加」を優先するUIならInput発火、閲覧優先ならView発火
+                  if (groupedStories[user.id]) {
+                     setViewingStory({ userId: user.id, index: 0 });
+                  } else {
+                     storyInputRef.current.click();
+                  }
+                }}
+              >
+                <img 
+                  src={getAvatar(myProfile.username, myProfile.avatar_url)} 
+                  className={`w-[74px] h-[74px] rounded-full object-cover p-[2px] ${groupedStories[user.id] ? 'bg-gradient-to-tr from-gray-200 to-gray-300' : ''} ${darkMode ? 'border-black' : 'border-white'}`}
+                  style={{ border: groupedStories[user.id] ? '2px solid transparent' : '' }}
+                />
+                
+                {/* ストーリーが無い場合のみプラスバッジを表示 */}
                 {!groupedStories[user.id] && (
-                   <div className="absolute bottom-0 right-0 bg-blue-500 rounded-full p-1 border-2 border-white"><Plus size={12} className="text-white" /></div>
+                   <div className="absolute bottom-0 right-0 bg-blue-500 rounded-full p-1 border-2 border-white transform translate-x-[-2px] translate-y-[-2px]" onClick={(e) => { e.stopPropagation(); storyInputRef.current.click(); }}>
+                      <Plus size={14} className="text-white" strokeWidth={3} />
+                   </div>
                 )}
               </div>
-              <span className="text-[10px] font-bold text-gray-400">Your Story</span>
-              <input type="file" accept="image/*" ref={storyInputRef} className="hidden" onChange={handleStoryUpload} />
+              <span className="text-[11px] text-gray-400 font-normal">あなたのストーリー</span>
+              <input type="file" accept="image/*" ref={storyInputRef} className="hidden" onChange={handleStoryFileSelect} />
             </div>
 
             {/* 他ユーザーのストーリー */}
@@ -254,18 +311,17 @@ export default function App() {
                const uProfile = allProfiles.find(p => p.id === userId);
                if (!uProfile) return null;
                return (
-                 <div key={userId} className="inline-flex flex-col items-center gap-1 cursor-pointer" onClick={() => setViewingStory({ userId, index: 0 })}>
-                   <div className="p-[2px] rounded-full bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500">
-                     <img src={getAvatar(uProfile.username, uProfile.avatar_url)} className="w-16 h-16 rounded-full object-cover border-2 border-white" />
+                 <div key={userId} className="flex flex-col items-center gap-1 cursor-pointer flex-shrink-0" onClick={() => setViewingStory({ userId, index: 0 })}>
+                   {/* Instagram風グラデーションリング */}
+                   <div className="p-[3px] rounded-full bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600">
+                     <div className={`rounded-full p-[2px] ${darkMode ? 'bg-black' : 'bg-white'}`}>
+                       <img src={getAvatar(uProfile.username, uProfile.avatar_url)} className="w-[66px] h-[66px] rounded-full object-cover" />
+                     </div>
                    </div>
-                   <span className="text-[10px] font-bold max-w-[64px] truncate">{uProfile.display_name}</span>
+                   <span className="text-[11px] font-normal truncate max-w-[70px]">{uProfile.username}</span>
                  </div>
                );
             })}
-             {/* 自分のストーリーを見るボタン (投稿済みの場合) */}
-             {groupedStories[user.id] && (
-               <div className="hidden" /> // 自分は先頭の "Your Story" で処理するが、見る機能と追加機能を分けるなら調整可能。今回はシンプルに追加優先。
-             )}
           </div>
 
           {/* 投稿フォーム */}
@@ -291,7 +347,7 @@ export default function App() {
         </div>
       )}
 
-      {/* プロフィール、検索、メッセージ画面などは既存コードを維持 */}
+      {/* プロフィール、検索、メッセージ画面 */}
       {view === 'profile' && profileInfo && (
         <ProfileView 
            user={user} activeProfileId={activeProfileId} profileInfo={profileInfo} posts={posts} isEditing={isEditing} setIsEditing={setIsEditing} editData={editData} setEditData={setEditData} 
@@ -313,12 +369,87 @@ export default function App() {
   );
 }
 
+// --- Instagram風 ストーリーズ編集画面 (Editor) ---
+function StoryEditor({ draft, onClose, onPost, myProfile, getAvatar, uploading }) {
+  return (
+    <div className="fixed inset-0 z-[100] bg-black text-white flex flex-col animate-in fade-in duration-200">
+      {/* Top Bar */}
+      <div className="flex justify-between items-center p-4 z-10">
+        <button onClick={onClose} className="bg-black/40 p-2 rounded-full backdrop-blur-sm">
+           <ChevronLeft size={28} />
+        </button>
+        <div className="flex gap-4">
+           {/* ダミーアイコン群 (UI再現) */}
+           <div className="flex flex-col items-center gap-6 bg-black/40 py-4 px-2 rounded-full backdrop-blur-sm">
+              <Type size={24} className="cursor-pointer" />
+              <Smile size={24} className="cursor-pointer" />
+              <Music size={24} className="cursor-pointer" />
+              <AtSign size={24} className="cursor-pointer" />
+              <Crop size={24} className="cursor-pointer" />
+              <MoreHorizontal size={24} className="cursor-pointer" />
+           </div>
+        </div>
+      </div>
+
+      {/* Main Image Preview */}
+      <div className="flex-grow relative flex items-center justify-center overflow-hidden">
+        <img 
+          src={draft.previewUrl} 
+          className="w-full h-auto max-h-[80vh] object-contain rounded-xl shadow-2xl" 
+          alt="Preview" 
+        />
+        <div className="absolute bottom-20 left-4 text-gray-300 bg-black/50 px-4 py-2 rounded-full text-sm font-medium">
+          キャプションを追加...
+        </div>
+      </div>
+
+      {/* Bottom Footer Action Bar */}
+      <div className="absolute bottom-0 w-full p-4 pb-8 bg-gradient-to-t from-black via-black/80 to-transparent flex justify-between items-end gap-2">
+         {/* ストーリーズボタン (投稿) */}
+         <button 
+            onClick={onPost} 
+            disabled={uploading}
+            className="flex items-center gap-2 bg-[#262626] hover:bg-[#363636] text-white px-4 py-3 rounded-full flex-grow transition active:scale-95"
+         >
+            <div className="relative">
+              <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-6 h-6 rounded-full border border-white" />
+              {uploading ? (
+                <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-full w-3 h-3 animate-ping" />
+              ) : (
+                <div className="absolute -bottom-1 -right-1 bg-blue-500 rounded-full border border-black p-[2px]">
+                   <Plus size={8} className="text-white" strokeWidth={4} />
+                </div>
+              )}
+            </div>
+            <span className="text-xs font-bold whitespace-nowrap">ストーリーズ</span>
+         </button>
+
+         {/* 親しい友達 (ダミー) */}
+         <button className="flex items-center gap-2 bg-[#262626] hover:bg-[#363636] text-white px-4 py-3 rounded-full flex-grow transition active:scale-95">
+            <div className="bg-green-500 p-1 rounded-full border border-black">
+               <Star size={12} className="text-white fill-white" />
+            </div>
+            <span className="text-xs font-bold whitespace-nowrap">親しい友達</span>
+         </button>
+
+         {/* 右矢印 (ダミーまたは投稿トリガー) */}
+         <button 
+           onClick={onPost}
+           className="bg-white text-black p-3 rounded-full shadow-lg active:scale-90 transition"
+         >
+            <ChevronRight size={24} strokeWidth={3} />
+         </button>
+      </div>
+    </div>
+  );
+}
+
 // --- Instagram風ストーリービューアー ---
 function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const STORY_DURATION = 5000; // 5秒
+  const STORY_DURATION = 5000; 
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
 
@@ -331,7 +462,7 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar })
   const startTimer = () => {
     startTimeRef.current = Date.now();
     const animate = () => {
-      if (isPaused) return; // 一時停止中は進めない
+      if (isPaused) return; 
       const elapsed = Date.now() - startTimeRef.current;
       const p = (elapsed / STORY_DURATION) * 100;
       setProgress(p);
@@ -349,7 +480,7 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar })
     if (currentIndex < stories.length - 1) {
       setCurrentIndex(prev => prev + 1);
     } else {
-      onClose(); // 最後のストーリーが終わったら閉じる
+      onClose(); 
     }
   };
 
@@ -357,7 +488,7 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar })
     if (currentIndex > 0) {
       setCurrentIndex(prev => prev - 1);
     } else {
-      setProgress(0); // 最初のストーリーなら最初から再生
+      setProgress(0); 
       startTimeRef.current = Date.now();
     }
   };
@@ -369,7 +500,6 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar })
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center">
-      {/* 背景ぼかし */}
       <div className="absolute inset-0 bg-cover bg-center blur-2xl opacity-30" style={{ backgroundImage: `url(${currentStory.image_url})` }} />
       
       <div 
@@ -377,7 +507,6 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar })
         onMouseDown={handlePointerDown} onMouseUp={handlePointerUp}
         onTouchStart={handlePointerDown} onTouchEnd={handlePointerUp}
       >
-        {/* プログレスバー */}
         <div className="absolute top-0 left-0 right-0 z-20 p-2 flex gap-1">
           {stories.map((_, idx) => (
             <div key={idx} className="h-0.5 flex-grow bg-white/30 rounded-full overflow-hidden">
@@ -389,7 +518,6 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar })
           ))}
         </div>
 
-        {/* ヘッダー情報 */}
         <div className="absolute top-4 left-0 right-0 z-20 p-3 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <img src={getAvatar(userProfile.username, userProfile.avatar_url)} className="w-8 h-8 rounded-full border border-white/50" />
@@ -399,21 +527,19 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar })
           <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-white p-2"><X size={24} /></button>
         </div>
 
-        {/* タップエリア (透明) */}
         <div className="absolute inset-0 z-10 flex">
           <div className="w-1/3 h-full" onClick={prevStory} />
           <div className="w-2/3 h-full" onClick={nextStory} />
         </div>
 
-        {/* 画像メイン */}
         <img src={currentStory.image_url} className="w-full h-full object-cover animate-in fade-in duration-300" />
       </div>
     </div>
   );
 }
 
-// --- サブコンポーネント (ProfileViewなど) の分離整理 ---
-// ※ コード長削減のため、ProfileViewはApp内にあったロジックを切り出しています。中身は以前と同じですが、ストーリー対応で少し整理されています。
+// --- 以下、既存コンポーネント ---
+
 function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, setIsEditing, editData, setEditData, handleUpdateProfile, uploading, avatarInputRef, headerInputRef, getAvatar, openProfile, toggleFollow, stats, setShowFollowList, setShowSettings, darkMode, setView, toggleLike, handleShare, setSelectedPost }) {
   if (isEditing) {
     return (
@@ -423,7 +549,6 @@ function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, set
           <h2 className="font-black uppercase tracking-widest">Edit Profile</h2>
           <button onClick={handleUpdateProfile} disabled={uploading} className="bg-blue-600 text-white px-4 py-1.5 rounded-full text-xs font-black uppercase">{uploading ? '...' : 'Save'}</button>
         </header>
-        {/* ... (編集フォームの中身は変更なし) ... */}
         <div className="relative h-44 bg-gray-200">
            <img src={editData.header_url || 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&q=80'} className="w-full h-full object-cover" />
            <div onClick={() => headerInputRef.current.click()} className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer opacity-80 hover:opacity-100 transition"><Camera className="text-white" /><input type="file" ref={headerInputRef} className="hidden" accept="image/*" /></div>
@@ -482,7 +607,6 @@ function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, set
   );
 }
 
-// 既存コンポーネントの再定義 (省略なし)
 function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
   const [newEmail, setNewEmail] = useState(user.email);
   const [newPassword, setNewPassword] = useState('');
@@ -654,4 +778,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Login"}</button>
     </div>
   );
-            }
+       }
