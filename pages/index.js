@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, UserPlus, UserMinus, Plus, Type, Check, Palette } from 'lucide-react';
+import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, Plus, Type, Check, Palette, Maximize2 } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -11,7 +11,23 @@ const formatTime = (dateStr) => {
   return date.toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-// フォントスタイルの定義
+// URLを検知してリンク化する関数
+const renderContent = (text) => {
+  if (!text) return '';
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) => {
+    if (part.match(urlRegex)) {
+      return (
+        <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all" onClick={(e) => e.stopPropagation()}>
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+};
+
 const FONT_STYLES = [
   { name: 'Classic', css: 'font-serif', label: 'Classic' },
   { name: 'Modern', css: 'font-sans font-black uppercase tracking-widest', label: 'Modern' },
@@ -27,10 +43,10 @@ export default function App() {
   const [stories, setStories] = useState([]); 
   const [groupedStories, setGroupedStories] = useState({}); 
   const [viewingStory, setViewingStory] = useState(null); 
-  const [creatingStory, setCreatingStory] = useState(false); // ストーリー作成モード
+  const [creatingStory, setCreatingStory] = useState(false);
   const [allProfiles, setAllProfiles] = useState([]);
   const [user, setUser] = useState(null);
-  const [darkMode, setDarkMode] = useState(true); // デフォルトをダークモード寄りに
+  const [darkMode, setDarkMode] = useState(true);
   const [activeProfileId, setActiveProfileId] = useState(null); 
   const [profileInfo, setProfileInfo] = useState(null); 
   const [stats, setStats] = useState({ followers: 0, following: 0, isFollowing: false });
@@ -125,21 +141,16 @@ export default function App() {
     return data.secure_url;
   }
 
-  // ストーリー画像の準備（エディタを開く）
   const handleStoryFileSelect = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      setCreatingStory(file);
-    }
-    e.target.value = ''; // リセット
+    if (file) setCreatingStory(file);
+    e.target.value = '';
   };
 
-  // 編集完了・アップロード処理
   const handleStoryPublish = async (processedImageBlob) => {
     if (!user || !processedImageBlob) return;
     setUploading(true);
-    setCreatingStory(false); // エディタを閉じる
-    
+    setCreatingStory(false);
     try {
       const imageUrl = await uploadToCloudinary(processedImageBlob);
       await supabase.from('stories').insert([{ user_id: user.id, image_url: imageUrl }]);
@@ -152,15 +163,13 @@ export default function App() {
     }
   };
 
-  // ストーリー削除
   const handleDeleteStory = async (storyId) => {
     if(!window.confirm("このストーリーを削除しますか？")) return;
     await supabase.from('stories').delete().eq('id', storyId);
-    setViewingStory(null); // 一旦閉じる
+    setViewingStory(null);
     fetchData();
   };
 
-  // ... (プロフィール更新等は既存通り)
   async function handleUpdateProfile() {
     setUploading(true);
     let { avatar_url, header_url } = editData;
@@ -244,28 +253,12 @@ export default function App() {
     <div className={`max-w-md mx-auto min-h-screen pb-20 border-x font-sans relative shadow-2xl transition-colors duration-300 ${darkMode ? 'bg-black text-white border-gray-800' : 'bg-white text-black border-gray-100'}`}>
       <script src="https://cdn.tailwindcss.com"></script>
 
-      {/* ストーリー作成画面 (エディタ) */}
       {creatingStory && (
-        <StoryCreator 
-          file={creatingStory} 
-          onClose={() => setCreatingStory(false)} 
-          onPublish={handleStoryPublish}
-          myProfile={myProfile}
-          getAvatar={getAvatar}
-        />
+        <StoryCreator file={creatingStory} onClose={() => setCreatingStory(false)} onPublish={handleStoryPublish} myProfile={myProfile} getAvatar={getAvatar} />
       )}
 
-      {/* ストーリービューアー */}
       {viewingStory && (
-        <StoryViewer 
-          stories={groupedStories[viewingStory.userId]} 
-          initialIndex={viewingStory.index} 
-          onClose={() => setViewingStory(null)} 
-          userProfile={allProfiles.find(p => p.id === viewingStory.userId)}
-          getAvatar={getAvatar}
-          currentUserId={user.id}
-          onDelete={handleDeleteStory}
-        />
+        <StoryViewer stories={groupedStories[viewingStory.userId]} initialIndex={viewingStory.index} onClose={() => setViewingStory(null)} userProfile={allProfiles.find(p => p.id === viewingStory.userId)} getAvatar={getAvatar} currentUserId={user.id} onDelete={handleDeleteStory} />
       )}
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
@@ -273,7 +266,6 @@ export default function App() {
       {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} refreshPosts={fetchData} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} myProfile={myProfile} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
-      {/* ホーム画面 */}
       {view === 'home' && (
         <div className="animate-in fade-in">
           <header className={`sticky top-0 z-30 backdrop-blur-md border-b p-4 flex justify-between items-center ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-50'}`}>
@@ -283,34 +275,19 @@ export default function App() {
             <MessageCircle size={24} className="cursor-pointer" onClick={() => setView('messages')} />
           </header>
 
-          {/* ストーリーズトレイ */}
           <div className={`p-4 overflow-x-auto whitespace-nowrap scrollbar-hide flex gap-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-            
-            {/* 自分のストーリー (閲覧 or 追加) */}
             <div className="inline-flex flex-col items-center gap-1 cursor-pointer relative shrink-0">
               <div className="relative">
-                {/* リング: ストーリーがあればグラデーション、なければ透明 */}
                 <div 
                   className={`rounded-full p-[2px] ${groupedStories[user.id] ? 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500' : 'bg-transparent'}`}
                   onClick={() => {
-                    if (groupedStories[user.id]) {
-                      setViewingStory({ userId: user.id, index: 0 });
-                    } else {
-                      storyInputRef.current.click();
-                    }
+                    if (groupedStories[user.id]) setViewingStory({ userId: user.id, index: 0 });
+                    else storyInputRef.current.click();
                   }}
                 >
                   <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className={`w-16 h-16 rounded-full object-cover border-2 ${darkMode ? 'border-black' : 'border-white'}`} />
                 </div>
-                
-                {/* プラスボタン (常に追加可能にする) */}
-                <div 
-                  className="absolute bottom-0 right-0 bg-blue-500 rounded-full p-1 border-2 border-black cursor-pointer hover:bg-blue-600 transition"
-                  onClick={(e) => {
-                    e.stopPropagation(); // 親のクリックイベント(閲覧)を防止
-                    storyInputRef.current.click();
-                  }}
-                >
+                <div className="absolute bottom-0 right-0 bg-blue-500 rounded-full p-1 border-2 border-black cursor-pointer" onClick={(e) => { e.stopPropagation(); storyInputRef.current.click(); }}>
                   <Plus size={12} className="text-white" />
                 </div>
               </div>
@@ -318,7 +295,6 @@ export default function App() {
               <input type="file" accept="image/*" ref={storyInputRef} className="hidden" onChange={handleStoryFileSelect} />
             </div>
 
-            {/* 他ユーザーのストーリー */}
             {Object.keys(groupedStories).filter(id => id !== user.id).map(userId => {
                const uProfile = allProfiles.find(p => p.id === userId);
                if (!uProfile) return null;
@@ -333,21 +309,19 @@ export default function App() {
             })}
           </div>
 
-          {/* 投稿フォーム */}
           <form onSubmit={handlePost} className={`p-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
             <div className="flex gap-3">
-              <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-10 h-10 rounded-full object-cover shadow-sm cursor-pointer" onClick={() => openProfile(user.id)} />
+              <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-10 h-10 rounded-full object-cover cursor-pointer" onClick={() => openProfile(user.id)} />
               <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent font-medium" placeholder="What's happening?" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
             </div>
             <div className="flex justify-between items-center pl-12 mt-2">
-              <label className="cursor-pointer text-blue-500 hover:bg-blue-50/10 p-2 rounded-full transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
-              <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs shadow-lg uppercase tracking-tighter">
+              <label className="cursor-pointer text-blue-500 p-2 rounded-full transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
+              <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs uppercase tracking-tighter">
                 {uploading ? '...' : 'Stream'}
               </button>
             </div>
           </form>
 
-          {/* フィード */}
           <div className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
             {posts.map(post => (
               <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} onOpenDetail={() => setSelectedPost(post)} />
@@ -356,13 +330,8 @@ export default function App() {
         </div>
       )}
 
-      {/* プロフィール画面などは維持 */}
       {view === 'profile' && profileInfo && (
-        <ProfileView 
-           user={user} activeProfileId={activeProfileId} profileInfo={profileInfo} posts={posts} isEditing={isEditing} setIsEditing={setIsEditing} editData={editData} setEditData={setEditData} 
-           handleUpdateProfile={handleUpdateProfile} uploading={uploading} avatarInputRef={avatarInputRef} headerInputRef={headerInputRef} getAvatar={getAvatar} openProfile={openProfile} 
-           toggleFollow={toggleFollow} stats={stats} setShowFollowList={setShowFollowList} setShowSettings={setShowSettings} darkMode={darkMode} setView={setView} toggleLike={toggleLike} handleShare={handleShare} setSelectedPost={setSelectedPost}
-        />
+        <ProfileView user={user} activeProfileId={activeProfileId} profileInfo={profileInfo} posts={posts} isEditing={isEditing} setIsEditing={setIsEditing} editData={editData} setEditData={setEditData} handleUpdateProfile={handleUpdateProfile} uploading={uploading} avatarInputRef={avatarInputRef} headerInputRef={headerInputRef} getAvatar={getAvatar} openProfile={openProfile} toggleFollow={toggleFollow} stats={stats} setShowFollowList={setShowFollowList} setShowSettings={setShowSettings} darkMode={darkMode} setView={setView} toggleLike={toggleLike} handleShare={handleShare} setSelectedPost={setSelectedPost} />
       )}
       {view === 'search' && <SearchView posts={posts} openProfile={openProfile} searchQuery={searchQuery} setSearchQuery={setSearchQuery} setSelectedPost={setSelectedPost} darkMode={darkMode} />}
       {view === 'messages' && <MessagesList allProfiles={allProfiles} user={user} setDmTarget={setDmTarget} getAvatar={getAvatar} openProfile={openProfile} darkMode={darkMode} />}
@@ -377,19 +346,24 @@ export default function App() {
   );
 }
 
-// --- 新機能: ストーリー作成 (画像＋文字入れ) ---
+// --- ストーリー作成 (移動・拡大縮小機能付き) ---
 function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
   const [textMode, setTextMode] = useState(false);
   const [text, setText] = useState('');
   const [textStyle, setTextStyle] = useState({ 
     fontIndex: 0, 
     colorIndex: 0, 
-    size: 50, // 0-100 scale
-    y: 50     // vertical position %
+    size: 50, 
+    x: 0, // 中心からのオフセット
+    y: 0,
+    scale: 1
   });
-  const canvasRef = useRef(null);
+  
   const imgRef = useRef(null);
   const [previewSrc, setPreviewSrc] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const initialDist = useRef(null);
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
@@ -397,21 +371,47 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
+  // ドラッグ操作
+  const handleStart = (e) => {
+    if (textMode) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    if (e.touches && e.touches.length === 2) {
+      initialDist.current = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+    } else {
+      setIsDragging(true);
+      dragStart.current = { x: clientX - textStyle.x, y: clientY - textStyle.y };
+    }
+  };
+
+  const handleMove = (e) => {
+    if (!text) return;
+    if (e.touches && e.touches.length === 2) {
+      const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+      const zoom = dist / initialDist.current;
+      setTextStyle(prev => ({ ...prev, scale: Math.min(Math.max(prev.scale * zoom, 0.5), 5) }));
+      initialDist.current = dist;
+    } else if (isDragging) {
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      setTextStyle(prev => ({ ...prev, x: clientX - dragStart.current.x, y: clientY - dragStart.current.y }));
+    }
+  };
+
+  const handleEnd = () => { setIsDragging(false); initialDist.current = null; };
+
   const handlePublish = () => {
-    // 1. キャンバスを作成して画像とテキストを合成する
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const img = imgRef.current;
-
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
-
-    // 画像を描画
     ctx.drawImage(img, 0, 0);
 
-    // テキストがあれば描画
     if (text) {
-      const fontSize = (img.naturalWidth / 10) * (0.5 + textStyle.size / 50); // サイズ計算
+      const baseFontSize = (img.naturalWidth / 10) * (0.5 + textStyle.size / 50);
+      const fontSize = baseFontSize * textStyle.scale;
       const fontName = FONT_STYLES[textStyle.fontIndex].name;
       const fontMap = { 'Classic': 'serif', 'Modern': 'sans-serif', 'Typewriter': 'monospace', 'Neon': 'cursive' };
       
@@ -419,48 +419,46 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
       ctx.fillStyle = TEXT_COLORS[textStyle.colorIndex];
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      
-      // 影をつけて視認性を上げる
       ctx.shadowColor = "rgba(0,0,0,0.5)";
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 15;
       
-      const x = canvas.width / 2;
-      const y = canvas.height * 0.5; // 中央配置 (シンプル化のため)
+      // 画面上の座標をキャンバスの座標系に変換
+      const container = document.getElementById('story-preview-container');
+      const rect = container.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
 
-      ctx.fillText(text, x, y);
+      const centerX = canvas.width / 2 + (textStyle.x * scaleX);
+      const centerY = canvas.height / 2 + (textStyle.y * scaleY);
+
+      ctx.fillText(text, centerX, centerY);
     }
 
-    canvas.toBlob((blob) => {
-      onPublish(blob);
-    }, 'image/jpeg', 0.9);
+    canvas.toBlob((blob) => onPublish(blob), 'image/jpeg', 0.9);
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black flex flex-col">
-      {/* プレビュー画像 (非表示の参照用) */}
-      <img ref={imgRef} src={previewSrc} className="hidden" onLoad={() => {}} />
-
-      {/* ヘッダー */}
+    <div className="fixed inset-0 z-[100] bg-black flex flex-col overflow-hidden touch-none" onMouseMove={handleMove} onTouchMove={handleMove} onMouseUp={handleEnd} onTouchEnd={handleEnd}>
+      <img ref={imgRef} src={previewSrc} className="hidden" />
       <div className="absolute top-0 w-full p-4 flex justify-between items-center z-20">
         <button onClick={onClose} className="p-2 bg-black/40 rounded-full text-white"><X /></button>
-        <div className="flex gap-4">
-          <button onClick={() => setTextMode(true)} className="p-2 bg-black/40 rounded-full text-white"><Type /></button>
-        </div>
+        <button onClick={() => setTextMode(true)} className="p-2 bg-black/40 rounded-full text-white"><Type /></button>
       </div>
 
-      {/* メインキャンバスエリア */}
-      <div className="flex-grow relative flex items-center justify-center bg-gray-900 overflow-hidden">
+      <div id="story-preview-container" className="flex-grow relative flex items-center justify-center bg-gray-900 overflow-hidden">
         {previewSrc && (
-          <div className="relative w-full h-full max-w-md">
-             <img src={previewSrc} className="w-full h-full object-contain" />
-             {/* テキストオーバーレイ表示 */}
+          <div className="relative w-full h-full max-w-md flex items-center justify-center">
+             <img src={previewSrc} className="w-full h-full object-contain pointer-events-none" />
              {text && (
                <div 
-                 className={`absolute inset-0 flex items-center justify-center pointer-events-none break-words text-center whitespace-pre-wrap p-4 leading-tight ${FONT_STYLES[textStyle.fontIndex].css}`}
+                 onMouseDown={handleStart} onTouchStart={handleStart}
+                 className={`absolute cursor-move select-none text-center whitespace-pre-wrap leading-tight break-words p-4 ${FONT_STYLES[textStyle.fontIndex].css}`}
                  style={{ 
                    color: TEXT_COLORS[textStyle.colorIndex], 
-                   fontSize: `${1.5 + textStyle.size / 20}rem`,
-                   textShadow: '0 2px 10px rgba(0,0,0,0.5)'
+                   fontSize: `${(1.5 + textStyle.size / 20) * textStyle.scale}rem`,
+                   transform: `translate(${textStyle.x}px, ${textStyle.y}px)`,
+                   textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+                   width: 'max-content', maxWidth: '90%'
                  }}
                >
                  {text}
@@ -470,88 +468,39 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
         )}
       </div>
 
-      {/* テキスト入力モード */}
       {textMode && (
         <div className="absolute inset-0 z-30 bg-black/80 backdrop-blur-sm flex flex-col justify-center items-center animate-in fade-in">
-           <div className="absolute top-4 right-4">
-             <button onClick={() => setTextMode(false)} className="text-white font-bold text-lg">完了</button>
-           </div>
-           
-           <textarea 
-             autoFocus
-             value={text}
-             onChange={e => setText(e.target.value)}
-             className={`bg-transparent text-center w-full max-w-xs outline-none resize-none overflow-hidden placeholder-white/50 ${FONT_STYLES[textStyle.fontIndex].css}`}
-             style={{ color: TEXT_COLORS[textStyle.colorIndex], fontSize: `${1.5 + textStyle.size / 20}rem` }}
-             placeholder="タップして入力..."
-             rows={3}
-           />
-
-           {/* ツールバー */}
+           <div className="absolute top-4 right-4"><button onClick={() => setTextMode(false)} className="text-white font-bold text-lg">完了</button></div>
+           <textarea autoFocus value={text} onChange={e => setText(e.target.value)} className={`bg-transparent text-center w-full max-w-xs outline-none resize-none overflow-hidden placeholder-white/50 ${FONT_STYLES[textStyle.fontIndex].css}`} style={{ color: TEXT_COLORS[textStyle.colorIndex], fontSize: `${1.5 + textStyle.size / 20}rem` }} placeholder="タップして入力..." rows={3} />
            <div className="absolute bottom-0 w-full p-4 space-y-4 pb-10 bg-gradient-to-t from-black to-transparent">
-             {/* フォント選択 */}
              <div className="flex justify-center gap-4 overflow-x-auto pb-2">
                {FONT_STYLES.map((f, i) => (
-                 <button 
-                   key={f.name} 
-                   onClick={() => setTextStyle({...textStyle, fontIndex: i})}
-                   className={`px-4 py-1 rounded-full text-xs font-bold border ${textStyle.fontIndex === i ? 'bg-white text-black border-white' : 'bg-black/50 text-white border-white/30'}`}
-                 >
-                   {f.name}
-                 </button>
+                 <button key={f.name} onClick={() => setTextStyle({...textStyle, fontIndex: i})} className={`px-4 py-1 rounded-full text-xs font-bold border ${textStyle.fontIndex === i ? 'bg-white text-black border-white' : 'bg-black/50 text-white border-white/30'}`}>{f.name}</button>
                ))}
              </div>
-             
-             {/* サイズスライダー */}
-             <div className="flex items-center justify-center px-8">
-               <span className="text-xs text-white mr-2">A</span>
-               <input 
-                 type="range" min="0" max="100" 
-                 value={textStyle.size} 
-                 onChange={e => setTextStyle({...textStyle, size: parseInt(e.target.value)})}
-                 className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-               />
-               <span className="text-lg text-white ml-2">A</span>
-             </div>
-
-             {/* カラーパレット */}
              <div className="flex justify-center gap-3 overflow-x-auto px-4">
                {TEXT_COLORS.map((c, i) => (
-                 <button 
-                   key={c}
-                   onClick={() => setTextStyle({...textStyle, colorIndex: i})}
-                   className={`w-8 h-8 rounded-full border-2 ${textStyle.colorIndex === i ? 'border-white scale-110' : 'border-transparent'}`}
-                   style={{ backgroundColor: c }}
-                 />
+                 <button key={c} onClick={() => setTextStyle({...textStyle, colorIndex: i})} className={`w-8 h-8 rounded-full border-2 ${textStyle.colorIndex === i ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: c }} />
                ))}
              </div>
            </div>
         </div>
       )}
 
-      {/* フッター (投稿ボタン) - テキストモードでない時のみ */}
       {!textMode && (
         <div className="absolute bottom-0 w-full p-4 flex justify-between items-center bg-gradient-to-t from-black/90 to-transparent pb-8">
            <div className="flex items-center gap-2">
-             <div className="p-[2px] rounded-full bg-gradient-to-tr from-yellow-400 to-purple-500">
-               <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-8 h-8 rounded-full border-2 border-black" />
-             </div>
+             <div className="p-[2px] rounded-full bg-gradient-to-tr from-yellow-400 to-purple-500"><img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-8 h-8 rounded-full border-2 border-black" /></div>
              <span className="text-white text-xs font-bold">あなたのストーリー</span>
            </div>
-           
-           <button 
-             onClick={handlePublish}
-             className="bg-white text-black rounded-full p-3 px-6 font-bold flex items-center gap-2 shadow-lg active:scale-95 transition"
-           >
-             シェア <ChevronLeft className="rotate-180" size={16} />
-           </button>
+           <button onClick={handlePublish} className="bg-white text-black rounded-full p-3 px-6 font-bold flex items-center gap-2 shadow-lg active:scale-95 transition">シェア <ChevronLeft className="rotate-180" size={16} /></button>
         </div>
       )}
     </div>
   );
 }
 
-// --- ストーリービューアー (機能強化版) ---
+// --- ストーリービューアー ---
 function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, currentUserId, onDelete }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
@@ -560,13 +509,9 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, c
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
   
-  // ストーリーがない場合(削除などで)閉じる
   useEffect(() => {
-    if (!stories || stories.length === 0) {
-      onClose();
-    } else if (currentIndex >= stories.length) {
-        setCurrentIndex(stories.length - 1);
-    }
+    if (!stories || stories.length === 0) onClose();
+    else if (currentIndex >= stories.length) setCurrentIndex(stories.length - 1);
   }, [stories, currentIndex]);
 
   const currentStory = stories[currentIndex];
@@ -585,33 +530,14 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, c
       const elapsed = Date.now() - startTimeRef.current;
       const p = (elapsed / STORY_DURATION) * 100;
       setProgress(p);
-
-      if (elapsed < STORY_DURATION) {
-        timerRef.current = requestAnimationFrame(animate);
-      } else {
-        nextStory();
-      }
+      if (elapsed < STORY_DURATION) timerRef.current = requestAnimationFrame(animate);
+      else nextStory();
     };
     timerRef.current = requestAnimationFrame(animate);
   };
 
-  const nextStory = () => {
-    if (currentIndex < stories.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-    } else {
-      onClose(); 
-    }
-  };
-
-  const prevStory = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(prev => prev - 1);
-    } else {
-      setProgress(0); 
-      startTimeRef.current = Date.now();
-    }
-  };
-
+  const nextStory = () => { if (currentIndex < stories.length - 1) setCurrentIndex(prev => prev + 1); else onClose(); };
+  const prevStory = () => { if (currentIndex > 0) setCurrentIndex(prev => prev - 1); else { setProgress(0); startTimeRef.current = Date.now(); } };
   const handlePointerDown = () => { setIsPaused(true); cancelAnimationFrame(timerRef.current); };
   const handlePointerUp = () => { setIsPaused(false); startTimeRef.current = Date.now() - (progress / 100) * STORY_DURATION; startTimer(); };
 
@@ -620,67 +546,32 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, c
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center">
       <div className="absolute inset-0 bg-cover bg-center blur-2xl opacity-30" style={{ backgroundImage: `url(${currentStory.image_url})` }} />
-      
-      <div 
-        className="relative w-full max-w-md h-full sm:h-[90vh] sm:rounded-2xl overflow-hidden bg-gray-900 flex flex-col"
-        onMouseDown={handlePointerDown} onMouseUp={handlePointerUp}
-        onTouchStart={handlePointerDown} onTouchEnd={handlePointerUp}
-      >
-        {/* 上部のグラデーション (視認性向上) */}
+      <div className="relative w-full max-w-md h-full sm:h-[90vh] sm:rounded-2xl overflow-hidden bg-gray-900 flex flex-col" onMouseDown={handlePointerDown} onMouseUp={handlePointerUp} onTouchStart={handlePointerDown} onTouchEnd={handlePointerUp}>
         <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/70 to-transparent z-10 pointer-events-none" />
-
-        {/* プログレスバー */}
         <div className="absolute top-0 left-0 right-0 z-20 p-2 flex gap-1 mt-2">
           {stories.map((_, idx) => (
-            <div key={idx} className="h-0.5 flex-grow bg-white/30 rounded-full overflow-hidden backdrop-blur-sm">
-              <div 
-                className="h-full bg-white transition-all duration-100 ease-linear shadow-[0_0_5px_rgba(255,255,255,0.8)]"
-                style={{ width: idx < currentIndex ? '100%' : idx === currentIndex ? `${progress}%` : '0%' }} 
-              />
+            <div key={idx} className="h-0.5 flex-grow bg-white/30 rounded-full overflow-hidden">
+              <div className="h-full bg-white transition-all duration-100 ease-linear shadow-[0_0_5px_rgba(255,255,255,0.8)]" style={{ width: idx < currentIndex ? '100%' : idx === currentIndex ? `${progress}%` : '0%' }} />
             </div>
           ))}
         </div>
-
-        {/* ヘッダー情報 */}
         <div className="absolute top-4 left-0 right-0 z-20 p-3 pt-6 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <img src={getAvatar(userProfile.username, userProfile.avatar_url)} className="w-8 h-8 rounded-full border border-white/50" />
             <span className="text-white text-sm font-bold shadow-black drop-shadow-md">{userProfile.display_name}</span>
             <span className="text-white/80 text-xs font-medium">{formatTime(currentStory.created_at)}</span>
           </div>
-          
           <div className="flex items-center gap-2">
-            {/* 自分のストーリーなら削除ボタンを表示 */}
-            {currentUserId === currentStory.user_id && (
-              <button 
-                onClick={(e) => { e.stopPropagation(); onDelete(currentStory.id); }} 
-                className="text-white/80 hover:text-red-500 p-2 transition"
-              >
-                <Trash2 size={20} />
-              </button>
-            )}
+            {currentUserId === currentStory.user_id && <button onClick={(e) => { e.stopPropagation(); onDelete(currentStory.id); }} className="text-white/80 hover:text-red-500 p-2"><Trash2 size={20} /></button>}
             <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-white p-2"><X size={24} /></button>
           </div>
         </div>
-
-        {/* タップエリア */}
-        <div className="absolute inset-0 z-10 flex">
-          <div className="w-1/3 h-full" onClick={prevStory} />
-          <div className="w-2/3 h-full" onClick={nextStory} />
-        </div>
-
-        {/* 画像メイン */}
+        <div className="absolute inset-0 z-10 flex"><div className="w-1/3 h-full" onClick={prevStory} /><div className="w-2/3 h-full" onClick={nextStory} /></div>
         <img src={currentStory.image_url} className="w-full h-full object-contain bg-black animate-in fade-in duration-300" />
       </div>
     </div>
   );
 }
-
-// ... (以下、ProfileView, SettingsScreen, PostCard, PostDetailModal, SearchView, MessagesList, DMScreen, FollowListModal, AuthScreen は変更なし)
-// コード長削減のため省略していませんが、以前のコードブロックにある他のコンポーネントはそのまま維持してください。
-// ここでは主要な変更があった App, StoryCreator, StoryViewer 以外は
-// 直前の回答のコードのままで動作します。
-// 念のため、ProfileView以下も以前のコードと連結して使用してください。
 
 function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, setIsEditing, editData, setEditData, handleUpdateProfile, uploading, avatarInputRef, headerInputRef, getAvatar, openProfile, toggleFollow, stats, setShowFollowList, setShowSettings, darkMode, setView, toggleLike, handleShare, setSelectedPost }) {
   if (isEditing) {
@@ -760,13 +651,21 @@ function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
     if (newEmail !== user.email) updates.email = newEmail;
     if (newPassword) updates.password = newPassword;
     const { error } = await supabase.auth.updateUser(updates);
-    if (error) alert(error.message); else alert('Updated.');
+    if (error) alert(error.message); else alert('認証情報を更新しました。');
     setUpdating(false);
   };
   return (
     <div className={`fixed inset-0 z-[110] animate-in slide-in-from-bottom duration-300 overflow-y-auto pb-10 ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
       <header className="p-4 border-b flex items-center gap-4 sticky top-0 z-10 bg-inherit"><ChevronLeft onClick={onClose} className="cursor-pointer" /><h2 className="font-black uppercase tracking-widest">Settings</h2></header>
       <div className="p-6 space-y-8">
+        <section>
+          <h3 className="text-gray-400 text-[10px] font-black uppercase mb-4 tracking-widest">Account</h3>
+          <div className="space-y-4">
+             <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] text-gray-400 uppercase block mb-1">Email</label><input type="email" className="w-full bg-transparent outline-none font-bold" value={newEmail} onChange={e => setNewEmail(e.target.value)} /></div>
+             <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] text-gray-400 uppercase block mb-1">New Password</label><input type="password" placeholder="••••••••" className="w-full bg-transparent outline-none font-bold" value={newPassword} onChange={e => setNewPassword(e.target.value)} /></div>
+             <button onClick={handleUpdateAuth} disabled={updating} className="w-full py-3 bg-blue-600 rounded-xl font-bold text-xs uppercase text-white">{updating ? 'Updating...' : 'Update Auth Info'}</button>
+          </div>
+        </section>
         <section><h3 className="text-gray-400 text-[10px] font-black uppercase mb-4 tracking-widest">Appearance</h3><button onClick={() => setDarkMode(!darkMode)} className={`w-full flex justify-between items-center p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><span className="text-sm font-bold">Dark Mode</span><div className={`w-10 h-6 rounded-full relative transition-colors ${darkMode ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${darkMode ? 'right-1' : 'left-1'}`} /></div></button></section>
         <section className="pt-4 border-t border-gray-100/10"><button onClick={handleLogout} className="w-full p-4 rounded-2xl bg-red-500/10 text-red-500 font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2"><LogOut size={16}/> Logout</button></section>
       </div>
@@ -786,7 +685,7 @@ function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, 
           </div>
           <span className="text-[10px] text-gray-400 font-bold whitespace-nowrap pt-1">{formatTime(post.created_at)}</span>
         </div>
-        <p className="text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap">{post.content}</p>
+        <p className="text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap">{renderContent(post.content)}</p>
         {post.image_url && <img src={post.image_url} onClick={onOpenDetail} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100/10 cursor-pointer hover:brightness-95 transition" />}
         <div className="flex justify-between mt-4 text-gray-400 max-w-[200px] items-center">
           <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'hover:text-red-500'}`}><Heart size={18} fill={post.is_liked ? "currentColor" : "none"} /><span className="text-xs font-black">{post.like_count || ''}</span></button>
@@ -825,7 +724,7 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
           <div className="flex items-center gap-3" onClick={() => { onClose(); openProfile(post.profiles.id); }}><img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" /><div className="flex flex-col"><span className="font-black text-[10px]">@{post.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(post.created_at)}</span></div></div>
           <div className="flex items-center gap-2">{isMyPost && <button onClick={() => onDelete(post.id)} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={20}/></button>}<button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600"><X size={24}/></button></div>
         </div>
-        <div className="flex-grow overflow-y-auto"><div className="p-5 border-b">{post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border border-gray-100/10" />}<p className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{post.content}</p></div><div className="p-5 space-y-4 pb-10">{comments.map(c => (<div key={c.id} className="flex gap-3 animate-in fade-in slide-in-from-top-2 duration-300"><img src={getAvatar(c.profiles?.username, c.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" /><div className={`flex-grow p-3 rounded-2xl relative ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><div className="flex justify-between items-start"><div className="flex flex-col mb-1"><span className="font-black text-[10px]">@{c.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(c.created_at)}</span></div>{currentUser.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>}</div><p className="text-sm font-medium leading-relaxed">{c.content}</p></div></div>))}</div></div>
+        <div className="flex-grow overflow-y-auto"><div className="p-5 border-b">{post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border border-gray-100/10" />}<p className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{renderContent(post.content)}</p></div><div className="p-5 space-y-4 pb-10">{comments.map(c => (<div key={c.id} className="flex gap-3 animate-in fade-in slide-in-from-top-2 duration-300"><img src={getAvatar(c.profiles?.username, c.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" /><div className={`flex-grow p-3 rounded-2xl relative ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><div className="flex justify-between items-start"><div className="flex flex-col mb-1"><span className="font-black text-[10px]">@{c.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(c.created_at)}</span></div>{currentUser.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>}</div><p className="text-sm font-medium leading-relaxed">{c.content}</p></div></div>))}</div></div>
         <form onSubmit={handlePostComment} className={`p-4 border-t flex gap-2 ${darkMode ? 'bg-black border-gray-800' : 'bg-white'}`}><input type="text" placeholder="コメントを入力..." className={`flex-grow p-4 rounded-2xl text-sm outline-none font-medium ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={commentText} onChange={(e) => setCommentText(e.target.value)} /><button type="submit" disabled={loading || !commentText.trim()} className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition"><Send size={18}/></button></form>
       </div>
     </div>
@@ -919,4 +818,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Login"}</button>
     </div>
   );
-       }
+    }
