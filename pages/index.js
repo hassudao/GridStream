@@ -4,7 +4,7 @@ import {
   Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, 
   User as UserIcon, ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, 
   Trash2, MessageSquare, Plus, Type, Check, Palette, Maximize2,
-  UserPlus, UserMinus // ← ここが漏れていました
+  UserPlus, UserMinus, ArrowRight, Loader2
 } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
@@ -224,29 +224,25 @@ export default function App() {
   }
 
   const openProfile = async (userId) => {
-    if (!userId) return;
     setActiveProfileId(userId);
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (profile) setProfileInfo(profile);
-    
+    setProfileInfo(profile);
     const { count: fers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userId);
     const { count: fing } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId);
-    
     let isFollowing = false;
     if (user && user.id !== userId) {
-      const { data } = await supabase.from('follows').select('*').eq('follower_id', user.id).eq('following_id', userId).single();
+      const { data } = await supabase.from('follows').select('*').eq('follower_id', user.id).eq('following_id', userId).maybeSingle();
       isFollowing = !!data;
     }
     setStats({ followers: fers || 0, following: fing || 0, isFollowing });
-    setView('profile'); 
-    setIsEditing(false);
+    setView('profile'); setIsEditing(false);
   };
 
   async function toggleFollow() {
     if (!user || !activeProfileId || user.id === activeProfileId) return;
     if (stats.isFollowing) {
       await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', activeProfileId);
-      setStats(prev => ({ ...prev, isFollowing: false, followers: Math.max(0, prev.followers - 1) }));
+      setStats(prev => ({ ...prev, isFollowing: false, followers: prev.followers - 1 }));
     } else {
       await supabase.from('follows').insert([{ follower_id: user.id, following_id: activeProfileId }]);
       setStats(prev => ({ ...prev, isFollowing: true, followers: prev.followers + 1 }));
@@ -355,7 +351,9 @@ export default function App() {
   );
 }
 
-// --- ストーリー作成 (移動・拡大縮小機能付き) ---
+// --- ストーリー作成・ビューアー、各ビューコンポーネントは前回の修正を維持 ---
+// (省略せずに全文に含めます)
+
 function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
   const [textMode, setTextMode] = useState(false);
   const [text, setText] = useState('');
@@ -440,6 +438,7 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
 
       ctx.fillText(text, centerX, centerY);
     }
+
     canvas.toBlob((blob) => onPublish(blob), 'image/jpeg', 0.9);
   };
 
@@ -506,7 +505,6 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
   );
 }
 
-// --- ストーリービューアー ---
 function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, currentUserId, onDelete }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
@@ -611,14 +609,14 @@ function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, set
         <img src={profileInfo.header_url || 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&q=80'} className="w-full h-full object-cover" />
         <div className="absolute top-4 inset-x-4 flex justify-between">
           <button onClick={() => setView('home')} className="bg-black/30 backdrop-blur-md p-2 rounded-full text-white"><ChevronLeft size={20}/></button>
-          {user.id === activeProfileId && <button onClick={() => setShowSettings(true)} className="bg-black/30 backdrop-blur-md p-2 rounded-full text-white"><Settings size={20}/></button>}
+          {user?.id === activeProfileId && <button onClick={() => setShowSettings(true)} className="bg-black/30 backdrop-blur-md p-2 rounded-full text-white"><Settings size={20}/></button>}
         </div>
       </div>
       <div className="px-4 relative">
         <div className="flex justify-between items-end -mt-12 mb-4">
           <img src={getAvatar(profileInfo.username, profileInfo.avatar_url)} className={`w-24 h-24 rounded-full border-4 shadow-xl object-cover ${darkMode ? 'border-black bg-black' : 'border-white bg-white'}`} />
           <div className="flex gap-2">
-            {user.id === activeProfileId ? (
+            {user?.id === activeProfileId ? (
               <button onClick={() => setIsEditing(true)} className={`border rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>Edit Profile</button>
             ) : (
               <button onClick={toggleFollow} className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter transition ${stats.isFollowing ? (darkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-black') : 'bg-blue-600 text-white'}`}>
@@ -647,7 +645,7 @@ function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, set
 }
 
 function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
-  const [newEmail, setNewEmail] = useState(user.email);
+  const [newEmail, setNewEmail] = useState(user?.email || '');
   const [newPassword, setNewPassword] = useState('');
   const [updating, setUpdating] = useState(false);
   const handleLogout = () => { supabase.auth.signOut(); onClose(); };
@@ -680,19 +678,18 @@ function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
 }
 
 function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, darkMode, onOpenDetail }) {
-  if (!post || !post.profiles) return null;
   return (
     <article className={`p-4 flex gap-3 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-      <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles.id)} />
+      <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles?.id)} />
       <div className="flex-grow min-w-0">
         <div className="flex justify-between items-start mb-1">
-          <div className="flex flex-col cursor-pointer max-w-[70%]" onClick={() => openProfile(post.profiles.id)}>
+          <div className="flex flex-col cursor-pointer max-w-[70%]" onClick={() => openProfile(post.profiles?.id)}>
             <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
             <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
           </div>
           <span className="text-[10px] text-gray-400 font-bold whitespace-nowrap pt-1">{formatTime(post.created_at)}</span>
         </div>
-        <p className="text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap">{renderContent(post.content)}</p>
+        <div className="text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap">{renderContent(post.content)}</div>
         {post.image_url && <img src={post.image_url} onClick={onOpenDetail} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100/10 cursor-pointer hover:brightness-95 transition" />}
         <div className="flex justify-between mt-4 text-gray-400 max-w-[200px] items-center">
           <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'hover:text-red-500'}`}><Heart size={18} fill={post.is_liked ? "currentColor" : "none"} /><span className="text-xs font-black">{post.like_count || ''}</span></button>
@@ -728,10 +725,10 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
     <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-4">
       <div className={`w-full max-w-md rounded-[2.5rem] flex flex-col h-[85vh] overflow-hidden shadow-2xl ${darkMode ? 'bg-black border border-gray-800' : 'bg-white text-black'}`}>
         <div className={`p-4 border-b flex items-center justify-between ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-          <div className="flex items-center gap-3" onClick={() => { onClose(); openProfile(post.profiles.id); }}><img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" /><div className="flex flex-col"><span className="font-black text-[10px]">@{post.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(post.created_at)}</span></div></div>
+          <div className="flex items-center gap-3" onClick={() => { onClose(); openProfile(post.profiles?.id); }}><img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" /><div className="flex flex-col"><span className="font-black text-[10px]">@{post.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(post.created_at)}</span></div></div>
           <div className="flex items-center gap-2">{isMyPost && <button onClick={() => onDelete(post.id)} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={20}/></button>}<button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600"><X size={24}/></button></div>
         </div>
-        <div className="flex-grow overflow-y-auto"><div className="p-5 border-b">{post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border border-gray-100/10" />}<p className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{renderContent(post.content)}</p></div><div className="p-5 space-y-4 pb-10">{comments.map(c => (<div key={c.id} className="flex gap-3 animate-in fade-in slide-in-from-top-2 duration-300"><img src={getAvatar(c.profiles?.username, c.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" /><div className={`flex-grow p-3 rounded-2xl relative ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><div className="flex justify-between items-start"><div className="flex flex-col mb-1"><span className="font-black text-[10px]">@{c.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(c.created_at)}</span></div>{currentUser.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>}</div><p className="text-sm font-medium leading-relaxed">{c.content}</p></div></div>))}</div></div>
+        <div className="flex-grow overflow-y-auto"><div className="p-5 border-b">{post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border border-gray-100/10" />}<div className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{renderContent(post.content)}</div></div><div className="p-5 space-y-4 pb-10">{comments.map(c => (<div key={c.id} className="flex gap-3 animate-in fade-in slide-in-from-top-2 duration-300"><img src={getAvatar(c.profiles?.username, c.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" /><div className={`flex-grow p-3 rounded-2xl relative ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><div className="flex justify-between items-start"><div className="flex flex-col mb-1"><span className="font-black text-[10px]">@{c.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(c.created_at)}</span></div>{currentUser?.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>}</div><p className="text-sm font-medium leading-relaxed">{c.content}</p></div></div>))}</div></div>
         <form onSubmit={handlePostComment} className={`p-4 border-t flex gap-2 ${darkMode ? 'bg-black border-gray-800' : 'bg-white'}`}><input type="text" placeholder="コメントを入力..." className={`flex-grow p-4 rounded-2xl text-sm outline-none font-medium ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={commentText} onChange={(e) => setCommentText(e.target.value)} /><button type="submit" disabled={loading || !commentText.trim()} className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition"><Send size={18}/></button></form>
       </div>
     </div>
@@ -742,7 +739,7 @@ function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelect
   return (
     <div className="animate-in fade-in">
       <div className={`p-4 sticky top-0 z-10 border-b ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-100'}`}><div className="relative"><Search className="absolute left-3 top-3 text-gray-400" size={18} /><input type="text" placeholder="DISCOVER" className={`w-full rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-black uppercase ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100'}`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div></div>
-      <div className="grid grid-cols-3 gap-[2px]">{posts.filter(p => p.image_url && (p.content.includes(searchQuery) || p.profiles?.username.includes(searchQuery))).map((post) => (<img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer hover:opacity-80 transition" onClick={() => setSelectedPost(post)} />))}</div>
+      <div className="grid grid-cols-3 gap-[2px]">{posts.filter(p => p.image_url && (p.content?.includes(searchQuery) || p.profiles?.username?.includes(searchQuery))).map((post) => (<img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer hover:opacity-80 transition" onClick={() => setSelectedPost(post)} />))}</div>
     </div>
   );
 }
@@ -751,7 +748,7 @@ function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, 
   return (
     <div className="animate-in fade-in">
       <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10">Messages</header>
-      <div className="p-2">{allProfiles.filter(p => p.id !== user.id).map(u => (<div key={u.id} className="flex items-center gap-4 p-4 rounded-2xl cursor-pointer hover:bg-gray-50/10" onClick={() => setDmTarget(u)}><img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-md" onClick={(e) => { e.stopPropagation(); openProfile(u.id); }} /><div className="flex-grow border-b pb-2"><p className="font-bold text-sm">{u.display_name}</p><p className="text-xs text-blue-500 font-medium mt-1 italic uppercase tracking-tighter">Open Chat</p></div></div>))}</div>
+      <div className="p-2">{allProfiles.filter(p => p.id !== user?.id).map(u => (<div key={u.id} className="flex items-center gap-4 p-4 rounded-2xl cursor-pointer hover:bg-gray-50/10" onClick={() => setDmTarget(u)}><img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-md" onClick={(e) => { e.stopPropagation(); openProfile(u.id); }} /><div className="flex-grow border-b pb-2"><p className="font-bold text-sm">{u.display_name}</p><p className="text-xs text-blue-500 font-medium mt-1 italic uppercase tracking-tighter">Open Chat</p></div></div>))}</div>
     </div>
   );
 }
@@ -783,7 +780,6 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
   const [list, setList] = useState([]);
   useEffect(() => {
     async function fetchList() {
-      if (!userId) return;
       const sourceCol = type === 'followers' ? 'following_id' : 'follower_id';
       const targetCol = type === 'followers' ? 'follower_id' : 'following_id';
       const { data: followData } = await supabase.from('follows').select(targetCol).eq(sourceCol, userId);
@@ -801,29 +797,173 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
   );
 }
 
+// --- 更新された認証画面（マルチステップ登録） ---
 function AuthScreen({ fetchData }) {
+  const [isLogin, setIsLogin] = useState(true);
+  const [step, setStep] = useState(0); // 0: 初期選択, 1: Email, 2: Password, 3: Username, 4: DisplayName
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
-  async function handleAuth(e) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const nextStep = () => { setError(''); setStep(s => s + 1); };
+  const prevStep = () => { setError(''); setStep(s => s - 1); };
+
+  async function handleLogin(e) {
     e.preventDefault();
-    if (isLogin) { await supabase.auth.signInWithPassword({ email, password }); } 
-    else { const { data } = await supabase.auth.signUp({ email, password }); if (data?.user) { const id = displayName.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 1000); await supabase.from('profiles').upsert([{ id: data.user.id, username: id, display_name: displayName }]); } }
-    fetchData();
+    setLoading(true);
+    setError('');
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError('ログインに失敗しました。メールアドレスまたはパスワードを確認してください。');
+    else fetchData();
+    setLoading(false);
   }
+
+  async function checkUsernameUnique(uname) {
+    const { data } = await supabase.from('profiles').select('username').eq('username', uname).maybeSingle();
+    return !data;
+  }
+
+  async function handleSignUpFinal() {
+    setLoading(true);
+    setError('');
+    
+    // 最終登録処理
+    const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+    if (signUpError) {
+      setError(signUpError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (data?.user) {
+      const { error: profileError } = await supabase.from('profiles').upsert([{ 
+        id: data.user.id, 
+        username: username.toLowerCase(), 
+        display_name: displayName 
+      }]);
+      if (profileError) setError('プロフィールの作成に失敗しました。');
+      else fetchData();
+    }
+    setLoading(false);
+  }
+
+  // バリデーション
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const isPasswordValid = password.length >= 6;
+  const isUsernameValid = /^[a-zA-Z0-9_]{4,15}$/.test(username);
+  const isDisplayNameValid = displayName.length >= 1 && displayName.length <= 50;
+
+  if (isLogin) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black animate-in fade-in">
+        <div className="w-20 h-20 bg-gradient-to-tr from-blue-700 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-pulse"><Zap size={40} color="white" fill="white" /></div>
+        <h1 className="text-4xl font-black mb-10 text-blue-700 italic uppercase">GridStream</h1>
+        <form onSubmit={handleLogin} className="w-full max-w-xs space-y-4">
+          <input type="email" placeholder="メールアドレス" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold border border-transparent focus:border-blue-500" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input type="password" placeholder="パスワード" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold border border-transparent focus:border-blue-500" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          {error && <p className="text-red-500 text-xs font-bold px-2">{error}</p>}
+          <button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs flex justify-center items-center gap-2">
+            {loading ? <Loader2 className="animate-spin" size={16}/> : "Login"}
+          </button>
+        </form>
+        <button onClick={() => { setIsLogin(false); setStep(1); }} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">新規アカウント作成</button>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black">
-      <script src="https://cdn.tailwindcss.com"></script>
-      <div className="w-20 h-20 bg-gradient-to-tr from-blue-700 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-pulse"><Zap size={40} color="white" fill="white" /></div>
-      <h1 className="text-4xl font-black mb-10 text-blue-700 italic uppercase">GridStream</h1>
-      <form onSubmit={handleAuth} className="w-full max-w-xs space-y-4">
-        {!isLogin && <input type="text" placeholder="DISPLAY NAME" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />}
-        <input type="email" placeholder="EMAIL" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input type="password" placeholder="PASSWORD" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        <button type="submit" className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">{isLogin ? "Login" : "Sign Up"}</button>
-      </form>
-      <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Login"}</button>
+    <div className="flex flex-col min-h-screen bg-white text-black p-8 pt-20 animate-in slide-in-from-right duration-300">
+      <div className="max-w-xs mx-auto w-full">
+        {/* 進捗インジケーター */}
+        <div className="flex gap-2 mb-12">
+          {[1,2,3,4].map(i => (
+            <div key={i} className={`h-1.5 flex-grow rounded-full transition-colors ${step >= i ? 'bg-blue-600' : 'bg-gray-100'}`} />
+          ))}
+        </div>
+
+        {step === 1 && (
+          <div className="space-y-6 animate-in fade-in">
+            <h2 className="text-3xl font-black leading-tight italic">まずはメールアドレスを教えてください。</h2>
+            <div className="space-y-2">
+              <input autoFocus type="email" placeholder="example@mail.com" className="w-full bg-gray-50 p-5 rounded-3xl outline-none font-bold text-xl border-2 border-transparent focus:border-blue-600 transition-all" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <p className="text-gray-400 text-[10px] font-bold px-2 uppercase tracking-widest">有効なメールアドレスを入力してください。</p>
+            </div>
+            <button disabled={!isEmailValid} onClick={nextStep} className="w-full bg-black text-white p-5 rounded-3xl font-black text-sm uppercase tracking-widest flex justify-between items-center disabled:opacity-30">
+              次へ <ArrowRight size={18}/>
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-6 animate-in fade-in">
+            <button onClick={prevStep} className="text-gray-400 mb-4"><ChevronLeft/></button>
+            <h2 className="text-3xl font-black leading-tight italic">ログインに使用するパスワードを設定します。</h2>
+            <div className="space-y-2">
+              <input autoFocus type="password" placeholder="••••••••" className="w-full bg-gray-50 p-5 rounded-3xl outline-none font-bold text-xl border-2 border-transparent focus:border-blue-600 transition-all" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <p className="text-gray-400 text-[10px] font-bold px-2 uppercase tracking-widest">6文字以上の半角英数字を入力してください。</p>
+            </div>
+            <button disabled={!isPasswordValid} onClick={nextStep} className="w-full bg-black text-white p-5 rounded-3xl font-black text-sm uppercase tracking-widest flex justify-between items-center disabled:opacity-30">
+              次へ <ArrowRight size={18}/>
+            </button>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-6 animate-in fade-in">
+            <button onClick={prevStep} className="text-gray-400 mb-4"><ChevronLeft/></button>
+            <h2 className="text-3xl font-black leading-tight italic">あなた専用のID（ユーザーネーム）を決めましょう。</h2>
+            <div className="space-y-2 relative">
+              <span className="absolute left-5 top-5 text-xl font-bold text-gray-400">@</span>
+              <input autoFocus type="text" placeholder="unique_id" className="w-full bg-gray-50 p-5 pl-10 rounded-3xl outline-none font-bold text-xl border-2 border-transparent focus:border-blue-600 transition-all" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} />
+              <p className="text-gray-400 text-[10px] font-bold px-2 uppercase tracking-widest leading-relaxed">
+                IDとしてURLなどに使用されます。<br/>4〜15文字の半角英数字とアンダースコア(_)が使用可能です。
+              </p>
+            </div>
+            {error && <p className="text-red-500 text-xs font-bold px-2 italic">{error}</p>}
+            <button 
+              disabled={!isUsernameValid || loading} 
+              onClick={async () => {
+                setLoading(true);
+                const isUnique = await checkUsernameUnique(username);
+                if (isUnique) nextStep();
+                else setError('このユーザーネームは既に使用されています。');
+                setLoading(false);
+              }} 
+              className="w-full bg-black text-white p-5 rounded-3xl font-black text-sm uppercase tracking-widest flex justify-between items-center disabled:opacity-30"
+            >
+              {loading ? <Loader2 className="animate-spin" size={18}/> : <>次へ <ArrowRight size={18}/></>}
+            </button>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-6 animate-in fade-in">
+            <button onClick={prevStep} className="text-gray-400 mb-4"><ChevronLeft/></button>
+            <h2 className="text-3xl font-black leading-tight italic">最後に、プロフィールに表示される名前を教えてください。</h2>
+            <div className="space-y-2">
+              <input autoFocus type="text" placeholder="名前" className="w-full bg-gray-50 p-5 rounded-3xl outline-none font-bold text-xl border-2 border-transparent focus:border-blue-600 transition-all" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+              <p className="text-gray-400 text-[10px] font-bold px-2 uppercase tracking-widest leading-relaxed">
+                いつでも変更可能です。最大50文字まで入力できます。
+              </p>
+            </div>
+            {error && <p className="text-red-500 text-xs font-bold px-2 italic">{error}</p>}
+            <button 
+              disabled={!isDisplayNameValid || loading} 
+              onClick={handleSignUpFinal}
+              className="w-full bg-blue-700 text-white p-5 rounded-3xl font-black text-sm uppercase tracking-widest flex justify-center items-center gap-2 shadow-xl shadow-blue-200 disabled:opacity-30"
+            >
+              {loading ? <Loader2 className="animate-spin" size={18}/> : "Betaをはじめる"}
+            </button>
+          </div>
+        )}
+
+        <button onClick={() => setIsLogin(true)} className="mt-12 w-full text-center text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
+          すでにアカウントをお持ちの方
+        </button>
+      </div>
     </div>
   );
-}
+      }
