@@ -4,7 +4,7 @@ import {
   Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, 
   User as UserIcon, ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, 
   Trash2, MessageSquare, Plus, Type, Check, Palette, Maximize2,
-  UserPlus, UserMinus, ArrowRight, Loader2
+  UserPlus, UserMinus 
 } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
@@ -351,9 +351,7 @@ export default function App() {
   );
 }
 
-// --- ストーリー作成・ビューアー、各ビューコンポーネントは前回の修正を維持 ---
-// (省略せずに全文に含めます)
-
+// --- ストーリー作成 (移動・拡大縮小機能付き) ---
 function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
   const [textMode, setTextMode] = useState(false);
   const [text, setText] = useState('');
@@ -505,6 +503,7 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
   );
 }
 
+// --- ストーリービューアー ---
 function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, currentUserId, onDelete }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
@@ -797,173 +796,127 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
   );
 }
 
-// --- 更新された認証画面（マルチステップ登録） ---
+// --- 認証画面 (4ステップ登録フロー) ---
 function AuthScreen({ fetchData }) {
   const [isLogin, setIsLogin] = useState(true);
-  const [step, setStep] = useState(0); // 0: 初期選択, 1: Email, 2: Password, 3: Username, 4: DisplayName
+  const [step, setStep] = useState(1);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
-  const nextStep = () => { setError(''); setStep(s => s + 1); };
-  const prevStep = () => { setError(''); setStep(s => s - 1); };
-
-  async function handleLogin(e) {
-    e.preventDefault();
+  async function handleAuth(e) {
+    if (e) e.preventDefault();
     setLoading(true);
-    setError('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError('ログインに失敗しました。メールアドレスまたはパスワードを確認してください。');
-    else fetchData();
-    setLoading(false);
-  }
-
-  async function checkUsernameUnique(uname) {
-    const { data } = await supabase.from('profiles').select('username').eq('username', uname).maybeSingle();
-    return !data;
-  }
-
-  async function handleSignUpFinal() {
-    setLoading(true);
-    setError('');
-    
-    // 最終登録処理
-    const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
-    if (signUpError) {
-      setError(signUpError.message);
+    try {
+      if (isLogin) {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        if (data?.user) {
+          const { error: profileError } = await supabase.from('profiles').upsert([{ 
+            id: data.user.id, 
+            username: username.toLowerCase(), 
+            display_name: displayName 
+          }]);
+          if (profileError) throw profileError;
+        }
+      }
+      fetchData();
+    } catch (err) {
+      alert(err.message);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    if (data?.user) {
-      const { error: profileError } = await supabase.from('profiles').upsert([{ 
-        id: data.user.id, 
-        username: username.toLowerCase(), 
-        display_name: displayName 
-      }]);
-      if (profileError) setError('プロフィールの作成に失敗しました。');
-      else fetchData();
-    }
-    setLoading(false);
   }
 
-  // バリデーション
-  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const isPasswordValid = password.length >= 6;
-  const isUsernameValid = /^[a-zA-Z0-9_]{4,15}$/.test(username);
-  const isDisplayNameValid = displayName.length >= 1 && displayName.length <= 50;
+  const nextStep = (e) => {
+    e.preventDefault();
+    if (step === 1 && email) setStep(2);
+    else if (step === 2 && password.length >= 6) setStep(3);
+    else if (step === 3 && username.length >= 4) setStep(4);
+  };
+
+  const prevStep = () => {
+    if (step > 1) setStep(step - 1);
+    else setIsLogin(true);
+  };
 
   if (isLogin) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black animate-in fade-in">
-        <div className="w-20 h-20 bg-gradient-to-tr from-blue-700 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-pulse"><Zap size={40} color="white" fill="white" /></div>
+      <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <div className="w-20 h-20 bg-gradient-to-tr from-blue-700 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-pulse">
+          <Zap size={40} color="white" fill="white" />
+        </div>
         <h1 className="text-4xl font-black mb-10 text-blue-700 italic uppercase">GridStream</h1>
-        <form onSubmit={handleLogin} className="w-full max-w-xs space-y-4">
-          <input type="email" placeholder="メールアドレス" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold border border-transparent focus:border-blue-500" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <input type="password" placeholder="パスワード" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold border border-transparent focus:border-blue-500" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          {error && <p className="text-red-500 text-xs font-bold px-2">{error}</p>}
-          <button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs flex justify-center items-center gap-2">
-            {loading ? <Loader2 className="animate-spin" size={16}/> : "Login"}
+        <form onSubmit={handleAuth} className="w-full max-w-xs space-y-4">
+          <input type="email" placeholder="EMAIL" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input type="password" placeholder="PASSWORD" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">
+            {loading ? "..." : "Login"}
           </button>
         </form>
-        <button onClick={() => { setIsLogin(false); setStep(1); }} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">新規アカウント作成</button>
+        <button onClick={() => { setIsLogin(false); setStep(1); }} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">Create Account</button>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white text-black p-8 pt-20 animate-in slide-in-from-right duration-300">
-      <div className="max-w-xs mx-auto w-full">
-        {/* 進捗インジケーター */}
-        <div className="flex gap-2 mb-12">
-          {[1,2,3,4].map(i => (
-            <div key={i} className={`h-1.5 flex-grow rounded-full transition-colors ${step >= i ? 'bg-blue-600' : 'bg-gray-100'}`} />
-          ))}
-        </div>
-
-        {step === 1 && (
-          <div className="space-y-6 animate-in fade-in">
-            <h2 className="text-3xl font-black leading-tight italic">まずはメールアドレスを教えてください。</h2>
-            <div className="space-y-2">
-              <input autoFocus type="email" placeholder="example@mail.com" className="w-full bg-gray-50 p-5 rounded-3xl outline-none font-bold text-xl border-2 border-transparent focus:border-blue-600 transition-all" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <p className="text-gray-400 text-[10px] font-bold px-2 uppercase tracking-widest">有効なメールアドレスを入力してください。</p>
-            </div>
-            <button disabled={!isEmailValid} onClick={nextStep} className="w-full bg-black text-white p-5 rounded-3xl font-black text-sm uppercase tracking-widest flex justify-between items-center disabled:opacity-30">
-              次へ <ArrowRight size={18}/>
-            </button>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="space-y-6 animate-in fade-in">
-            <button onClick={prevStep} className="text-gray-400 mb-4"><ChevronLeft/></button>
-            <h2 className="text-3xl font-black leading-tight italic">ログインに使用するパスワードを設定します。</h2>
-            <div className="space-y-2">
-              <input autoFocus type="password" placeholder="••••••••" className="w-full bg-gray-50 p-5 rounded-3xl outline-none font-bold text-xl border-2 border-transparent focus:border-blue-600 transition-all" value={password} onChange={(e) => setPassword(e.target.value)} />
-              <p className="text-gray-400 text-[10px] font-bold px-2 uppercase tracking-widest">6文字以上の半角英数字を入力してください。</p>
-            </div>
-            <button disabled={!isPasswordValid} onClick={nextStep} className="w-full bg-black text-white p-5 rounded-3xl font-black text-sm uppercase tracking-widest flex justify-between items-center disabled:opacity-30">
-              次へ <ArrowRight size={18}/>
-            </button>
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="space-y-6 animate-in fade-in">
-            <button onClick={prevStep} className="text-gray-400 mb-4"><ChevronLeft/></button>
-            <h2 className="text-3xl font-black leading-tight italic">あなた専用のID（ユーザーネーム）を決めましょう。</h2>
-            <div className="space-y-2 relative">
-              <span className="absolute left-5 top-5 text-xl font-bold text-gray-400">@</span>
-              <input autoFocus type="text" placeholder="unique_id" className="w-full bg-gray-50 p-5 pl-10 rounded-3xl outline-none font-bold text-xl border-2 border-transparent focus:border-blue-600 transition-all" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} />
-              <p className="text-gray-400 text-[10px] font-bold px-2 uppercase tracking-widest leading-relaxed">
-                IDとしてURLなどに使用されます。<br/>4〜15文字の半角英数字とアンダースコア(_)が使用可能です。
-              </p>
-            </div>
-            {error && <p className="text-red-500 text-xs font-bold px-2 italic">{error}</p>}
-            <button 
-              disabled={!isUsernameValid || loading} 
-              onClick={async () => {
-                setLoading(true);
-                const isUnique = await checkUsernameUnique(username);
-                if (isUnique) nextStep();
-                else setError('このユーザーネームは既に使用されています。');
-                setLoading(false);
-              }} 
-              className="w-full bg-black text-white p-5 rounded-3xl font-black text-sm uppercase tracking-widest flex justify-between items-center disabled:opacity-30"
-            >
-              {loading ? <Loader2 className="animate-spin" size={18}/> : <>次へ <ArrowRight size={18}/></>}
-            </button>
-          </div>
-        )}
-
-        {step === 4 && (
-          <div className="space-y-6 animate-in fade-in">
-            <button onClick={prevStep} className="text-gray-400 mb-4"><ChevronLeft/></button>
-            <h2 className="text-3xl font-black leading-tight italic">最後に、プロフィールに表示される名前を教えてください。</h2>
-            <div className="space-y-2">
-              <input autoFocus type="text" placeholder="名前" className="w-full bg-gray-50 p-5 rounded-3xl outline-none font-bold text-xl border-2 border-transparent focus:border-blue-600 transition-all" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-              <p className="text-gray-400 text-[10px] font-bold px-2 uppercase tracking-widest leading-relaxed">
-                いつでも変更可能です。最大50文字まで入力できます。
-              </p>
-            </div>
-            {error && <p className="text-red-500 text-xs font-bold px-2 italic">{error}</p>}
-            <button 
-              disabled={!isDisplayNameValid || loading} 
-              onClick={handleSignUpFinal}
-              className="w-full bg-blue-700 text-white p-5 rounded-3xl font-black text-sm uppercase tracking-widest flex justify-center items-center gap-2 shadow-xl shadow-blue-200 disabled:opacity-30"
-            >
-              {loading ? <Loader2 className="animate-spin" size={18}/> : "Betaをはじめる"}
-            </button>
-          </div>
-        )}
-
-        <button onClick={() => setIsLogin(true)} className="mt-12 w-full text-center text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
-          すでにアカウントをお持ちの方
+    <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black">
+      <script src="https://cdn.tailwindcss.com"></script>
+      
+      <div className="w-full max-w-xs flex items-center mb-8">
+        <button onClick={prevStep} className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition">
+          <ChevronLeft size={24} />
         </button>
+        <div className="flex-grow text-center mr-6">
+          <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Step {step} of 4</span>
+        </div>
       </div>
+      
+      <h2 className="text-2xl font-black mb-2 italic uppercase">Join Beta</h2>
+      
+      <form onSubmit={step === 4 ? handleAuth : nextStep} className="w-full max-w-xs space-y-6">
+        {step === 1 && (
+          <div className="animate-in slide-in-from-right duration-300">
+            <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Email Address</label>
+            <input type="email" placeholder="example@mail.com" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+            <p className="mt-2 text-[10px] text-gray-400 font-medium px-1">連絡可能なメールアドレスを入力してください。</p>
+          </div>
+        )}
+        
+        {step === 2 && (
+          <div className="animate-in slide-in-from-right duration-300">
+            <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Create Password</label>
+            <input type="password" placeholder="••••••••" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoFocus />
+            <p className="mt-2 text-[10px] text-gray-400 font-medium px-1">セキュリティのため、6文字以上で設定してください。</p>
+          </div>
+        )}
+        
+        {step === 3 && (
+          <div className="animate-in slide-in-from-right duration-300">
+            <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Username</label>
+            <input type="text" placeholder="unique_id" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition" value={username} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} required minLength={4} maxLength={15} autoFocus />
+            <p className="mt-2 text-[10px] text-gray-400 font-medium px-1">英数字とアンダーバーが使用できます（4〜15文字）。</p>
+          </div>
+        )}
+        
+        {step === 4 && (
+          <div className="animate-in slide-in-from-right duration-300">
+            <label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Display Name</label>
+            <input type="text" placeholder="Nickname" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold focus:ring-2 focus:ring-blue-500 transition" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required maxLength={50} autoFocus />
+            <p className="mt-2 text-[10px] text-gray-400 font-medium px-1">他のユーザーに表示される名前です（最大50文字）。</p>
+          </div>
+        )}
+
+        <button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs shadow-lg shadow-blue-200 active:scale-95 transition">
+          {loading ? "..." : (step === 4 ? "Complete Sign Up" : "Next")}
+        </button>
+      </form>
     </div>
   );
-      }
+        }
