@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, User as UserIcon, ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, Trash2, MessageSquare, Plus, Type, Check, Palette, Maximize2 } from 'lucide-react';
+import { 
+  Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, 
+  User as UserIcon, ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, 
+  Trash2, MessageSquare, Plus, Type, Check, Palette, Maximize2,
+  UserPlus, UserMinus // ← ここが漏れていました
+} from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
@@ -219,25 +224,29 @@ export default function App() {
   }
 
   const openProfile = async (userId) => {
+    if (!userId) return;
     setActiveProfileId(userId);
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    setProfileInfo(profile);
+    if (profile) setProfileInfo(profile);
+    
     const { count: fers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', userId);
     const { count: fing } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', userId);
+    
     let isFollowing = false;
     if (user && user.id !== userId) {
       const { data } = await supabase.from('follows').select('*').eq('follower_id', user.id).eq('following_id', userId).single();
       isFollowing = !!data;
     }
     setStats({ followers: fers || 0, following: fing || 0, isFollowing });
-    setView('profile'); setIsEditing(false);
+    setView('profile'); 
+    setIsEditing(false);
   };
 
   async function toggleFollow() {
     if (!user || !activeProfileId || user.id === activeProfileId) return;
     if (stats.isFollowing) {
       await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', activeProfileId);
-      setStats(prev => ({ ...prev, isFollowing: false, followers: prev.followers - 1 }));
+      setStats(prev => ({ ...prev, isFollowing: false, followers: Math.max(0, prev.followers - 1) }));
     } else {
       await supabase.from('follows').insert([{ follower_id: user.id, following_id: activeProfileId }]);
       setStats(prev => ({ ...prev, isFollowing: true, followers: prev.followers + 1 }));
@@ -354,7 +363,7 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
     fontIndex: 0, 
     colorIndex: 0, 
     size: 50, 
-    x: 0, // 中心からのオフセット
+    x: 0, 
     y: 0,
     scale: 1
   });
@@ -371,7 +380,6 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  // ドラッグ操作
   const handleStart = (e) => {
     if (textMode) return;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -422,7 +430,6 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
       ctx.shadowColor = "rgba(0,0,0,0.5)";
       ctx.shadowBlur = 15;
       
-      // 画面上の座標をキャンバスの座標系に変換
       const container = document.getElementById('story-preview-container');
       const rect = container.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
@@ -433,7 +440,6 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
 
       ctx.fillText(text, centerX, centerY);
     }
-
     canvas.toBlob((blob) => onPublish(blob), 'image/jpeg', 0.9);
   };
 
@@ -674,6 +680,7 @@ function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
 }
 
 function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, darkMode, onOpenDetail }) {
+  if (!post || !post.profiles) return null;
   return (
     <article className={`p-4 flex gap-3 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
       <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles.id)} />
@@ -776,6 +783,7 @@ function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMo
   const [list, setList] = useState([]);
   useEffect(() => {
     async function fetchList() {
+      if (!userId) return;
       const sourceCol = type === 'followers' ? 'following_id' : 'follower_id';
       const targetCol = type === 'followers' ? 'follower_id' : 'following_id';
       const { data: followData } = await supabase.from('follows').select(targetCol).eq(sourceCol, userId);
@@ -818,4 +826,4 @@ function AuthScreen({ fetchData }) {
       <button onClick={() => setIsLogin(!isLogin)} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">{isLogin ? "Create Account" : "Login"}</button>
     </div>
   );
-    }
+}
