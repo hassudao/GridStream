@@ -875,18 +875,6 @@ function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, 
     await supabase.from('comments').delete().eq('id', commentId).eq('user_id', currentUser.id);
     setComments(prev => prev.filter(c => c.id !== commentId)); refreshPosts();
   }
-  return (
-    <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-4">
-      <div className={`w-full max-w-md rounded-[2.5rem] flex flex-col h-[85vh] overflow-hidden shadow-2xl ${darkMode ? 'bg-black border border-gray-800' : 'bg-white text-black'}`}>
-        <div className={`p-4 border-b flex items-center justify-between ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-          <div className="flex items-center gap-3" onClick={() => { onClose(); openProfile(post.profiles?.id); }}><img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" /><div className="flex flex-col"><span className="font-black text-[10px]">@{post.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(post.created_at)}</span></div></div>
-          <div className="flex items-center gap-2">{isMyPost && <button onClick={() => onDelete(post.id)} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={20}/></button>}<button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600"><X size={24}/></button></div>
-        </div>
-        <div className="flex-grow overflow-y-auto"><div className="p-5 border-b">{post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4 border border-gray-100/10" />}<div className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{renderContent(post.content)}</div></div><div className="p-5 space-y-4 pb-10">{comments.map(c => (<div key={c.id} className="flex gap-3 animate-in fade-in slide-in-from-top-2 duration-300"><img src={getAvatar(c.profiles?.username, c.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" /><div className={`flex-grow p-3 rounded-2xl relative ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><div className="flex justify-between items-start"><div className="flex flex-col mb-1"><span className="font-black text-[10px]">@{c.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(c.created_at)}</span></div>{currentUser?.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>}</div><p className="text-sm font-medium leading-relaxed">{c.content}</p></div></div>))}</div></div>
-        <form onSubmit={handlePostComment} className={`p-4 border-t flex gap-2 ${darkMode ? 'bg-black border-gray-800' : 'bg-white'}`}><input type="text" placeholder="コメントを入力..." className={`flex-grow p-4 rounded-2xl text-sm outline-none font-medium ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={commentText} onChange={(e) => setCommentText(e.target.value)} /><button type="submit" disabled={loading || !commentText.trim()} className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition"><Send size={18}/></button></form>
-      </div>
-    </div>
-  );
 }
 
 function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelectedPost, darkMode }) {
