@@ -864,16 +864,7 @@ function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, 
   );
 }
 
-function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLike, onShare, currentUser, darkMode, refreshPosts }) {
-  const [comments, setComments] = useState([]);
-  const [commentText, setCommentText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const isMyPost = currentUser && post.user_id === currentUser.id;
-  useEffect(() => { fetchComments(); }, [post.id]);
-  async function fetchComments() {
-    const { data } = await supabase.from('comments').select('*, profiles(id, username, display_name, avatar_url)').eq('post_id', post.id).order('created_at', { ascending: false });
-    if (data) setComments(data);
-  }
+
   async function handlePostComment(e) {
     e.preventDefault(); if (!commentText.trim() || !currentUser) return;
     setLoading(true); await supabase.from('comments').insert([{ post_id: post.id, user_id: currentUser.id, content: commentText }]);
