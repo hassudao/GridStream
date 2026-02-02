@@ -875,7 +875,7 @@ function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, 
     await supabase.from('comments').delete().eq('id', commentId).eq('user_id', currentUser.id);
     setComments(prev => prev.filter(c => c.id !== commentId)); refreshPosts();
   }
-}
+
 
 function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelectedPost, darkMode }) {
   return (
