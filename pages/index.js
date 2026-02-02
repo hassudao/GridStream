@@ -3,8 +3,7 @@ import { supabase } from '../lib/supabase';
 import { 
   Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, 
   User as UserIcon, ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, 
-  Trash2, MessageSquare, Plus, Type, Check, Palette, Maximize2,
-  UserPlus, UserMinus, Bell 
+  Trash2, MessageSquare, Plus, Type, Bell, UserPlus, UserMinus 
 } from 'lucide-react';
 
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
@@ -19,7 +18,9 @@ const formatTime = (dateStr) => {
   if (diff < 60) return 'Just now';
   if (diff < 3600) return `${Math.floor(diff / 60)}m`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-  return `${Math.floor(diff / 86400)}d`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
+  
+  return date.toLocaleString('ja-JP', { month: 'short', day: 'numeric' });
 };
 
 // URLを検知してリンク化する関数
@@ -70,12 +71,9 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPost, setSelectedPost] = useState(null);
   const [uploading, setUploading] = useState(false);
-  
-  // Notification State
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [toast, setToast] = useState(null); // { message, type, userAvatar }
-
+  
   const fileInputRef = useRef(null);
   const storyInputRef = useRef(null);
   const avatarInputRef = useRef(null);
@@ -88,48 +86,13 @@ export default function App() {
       setUser(currentUser);
       if (currentUser) {
         fetchMyProfile(currentUser.id);
-        setupRealtimeSubscription(currentUser.id);
+        setupRealtime(currentUser.id);
       }
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => { if(user) fetchData(); }, [user]);
-
-  // Realtime Notification Listener
-  const setupRealtimeSubscription = (userId) => {
-    const channel = supabase
-      .channel('public:notifications')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
-        async (payload) => {
-          // Fetch actor details for the toast
-          const { data: actor } = await supabase.from('profiles').select('username, avatar_url').eq('id', payload.new.actor_id).single();
-          
-          if (actor) {
-            let message = '';
-            switch (payload.new.type) {
-              case 'like': message = `liked your post.`; break;
-              case 'story_like': message = `liked your story.`; break;
-              case 'follow': message = `started following you.`; break;
-              case 'comment': message = `commented: ${payload.new.content}`; break;
-              default: message = 'New notification';
-            }
-            // Show Toast
-            setToast({ message, username: actor.username, avatar_url: actor.avatar_url, type: payload.new.type });
-            setTimeout(() => setToast(null), 4000); // Hide after 4s
-            
-            // Update unread count
-            setUnreadCount(prev => prev + 1);
-            fetchNotifications(userId); // Refresh list
-          }
-        }
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  };
+  useEffect(() => { if (user) fetchData(); }, [user]);
 
   useEffect(() => {
     if (stories.length > 0 && allProfiles.length > 0) {
@@ -149,20 +112,33 @@ export default function App() {
     if (session?.user) {
       setUser(session.user);
       fetchMyProfile(session.user.id);
-      fetchNotifications(session.user.id);
+      setupRealtime(session.user.id);
     }
+  }
+
+  // リアルタイム通知リスナー
+  function setupRealtime(userId) {
+    const channel = supabase.channel('public:notifications')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${userId}` }, 
+      (payload) => {
+        setUnreadCount(prev => prev + 1);
+        fetchNotifications(userId); // 新しい通知を取得
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
   }
 
   async function fetchMyProfile(userId) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) { setMyProfile(data); setEditData(data); }
+    fetchNotifications(userId);
   }
 
   async function fetchNotifications(userId) {
     const { data } = await supabase
       .from('notifications')
-      .select(`*, profiles:actor_id(username, display_name, avatar_url)`)
-      .eq('user_id', userId)
+      .select(`*, profiles:actor_id (username, display_name, avatar_url)`)
+      .eq('recipient_id', userId)
       .order('created_at', { ascending: false })
       .limit(50);
     
@@ -173,11 +149,36 @@ export default function App() {
     }
   }
 
-  async function markNotificationsRead() {
+  async function markNotificationsAsRead() {
     if (!user) return;
-    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id);
+    await supabase.from('notifications').update({ is_read: true }).eq('recipient_id', user.id).eq('is_read', false);
     setUnreadCount(0);
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+  }
+
+  // 通知を作成する共通関数
+  async function createNotification(recipientId, type, resourceId = null) {
+    if (!user || user.id === recipientId) return; // 自分自身には通知しない
+    await supabase.from('notifications').insert([{
+      recipient_id: recipientId,
+      actor_id: user.id,
+      type: type,
+      resource_id: resourceId
+    }]);
+  }
+
+  // フォロワー全員に通知を送る（新規投稿・ストーリー用）
+  async function notifyFollowers(type, resourceId) {
+    const { data: followers } = await supabase.from('follows').select('follower_id').eq('following_id', user.id);
+    if (followers && followers.length > 0) {
+      const notifs = followers.map(f => ({
+        recipient_id: f.follower_id,
+        actor_id: user.id,
+        type: type,
+        resource_id: resourceId
+      }));
+      await supabase.from('notifications').insert(notifs);
+    }
   }
 
   async function fetchData() {
@@ -197,35 +198,16 @@ export default function App() {
     }
 
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    // Fetch stories and their likes
     const { data: storiesData } = await supabase
       .from('stories')
-      .select(`*, story_likes(user_id)`)
+      .select('*')
       .gt('created_at', yesterday)
       .order('created_at', { ascending: true });
     
-    // Format stories to include is_liked
-    const formattedStories = storiesData?.map(story => ({
-      ...story,
-      is_liked: user ? story.story_likes?.some(l => l.user_id === user.id) : false
-    })) || [];
-
-    setStories(formattedStories);
+    setStories(storiesData || []);
 
     const { data: profData } = await supabase.from('profiles').select('*');
     if (profData) setAllProfiles(profData);
-  }
-
-  // --- Notification Helpers ---
-  async function createNotification(type, targetUserId, resourceId = null, content = null) {
-    if (!user || user.id === targetUserId) return; // Don't notify self
-    await supabase.from('notifications').insert([{
-      user_id: targetUserId,
-      actor_id: user.id,
-      type,
-      resource_id: resourceId,
-      content
-    }]);
   }
 
   async function uploadToCloudinary(file) {
@@ -249,7 +231,11 @@ export default function App() {
     setCreatingStory(false);
     try {
       const imageUrl = await uploadToCloudinary(processedImageBlob);
-      await supabase.from('stories').insert([{ user_id: user.id, image_url: imageUrl }]);
+      const { data } = await supabase.from('stories').insert([{ user_id: user.id, image_url: imageUrl }]).select();
+      if (data) {
+        // フォロワーに通知
+        notifyFollowers('new_story', data[0].id);
+      }
       fetchData(); 
     } catch (error) {
       console.error("Story upload failed", error);
@@ -259,28 +245,16 @@ export default function App() {
     }
   };
 
+  const handleStoryLike = async (story) => {
+    // ストーリーへのいいね通知
+    await createNotification(story.user_id, 'story_like', story.id);
+  };
+
   const handleDeleteStory = async (storyId) => {
     if(!window.confirm("このストーリーを削除しますか？")) return;
     await supabase.from('stories').delete().eq('id', storyId);
     setViewingStory(null);
     fetchData();
-  };
-
-  // Story Like Logic
-  const toggleStoryLike = async (storyId, ownerId, currentLikeStatus) => {
-    if (!user) return;
-    
-    // Optimistic Update
-    const updatedStories = stories.map(s => s.id === storyId ? { ...s, is_liked: !currentLikeStatus } : s);
-    setStories(updatedStories);
-
-    if (currentLikeStatus) {
-      await supabase.from('story_likes').delete().eq('story_id', storyId).eq('user_id', user.id);
-    } else {
-      await supabase.from('story_likes').insert([{ story_id: storyId, user_id: user.id }]);
-      createNotification('story_like', ownerId, storyId);
-    }
-    fetchData(); // Sync with real data
   };
 
   async function handleUpdateProfile() {
@@ -297,7 +271,7 @@ export default function App() {
     setUploading(false);
   }
 
-  async function toggleLike(postId, isLiked, ownerId) {
+  async function toggleLike(postId, isLiked, authorId) {
     if (!user) return;
     const updateLogic = (p) => p.id === postId ? { ...p, is_liked: !isLiked, like_count: isLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1 } : p;
     setPosts(prev => prev.map(updateLogic));
@@ -307,7 +281,8 @@ export default function App() {
       await supabase.from('likes').delete().eq('post_id', postId).eq('user_id', user.id);
     } else {
       await supabase.from('likes').insert([{ post_id: postId, user_id: user.id }]);
-      createNotification('like', ownerId, postId);
+      // いいね通知
+      if (authorId) createNotification(authorId, 'like', postId);
     }
     fetchData();
   }
@@ -325,7 +300,13 @@ export default function App() {
     setUploading(true);
     let imageUrl = null;
     if (fileInputRef.current?.files[0]) imageUrl = await uploadToCloudinary(fileInputRef.current.files[0]);
-    await supabase.from('posts').insert([{ content: newPost, user_id: user.id, image_url: imageUrl }]);
+    const { data } = await supabase.from('posts').insert([{ content: newPost, user_id: user.id, image_url: imageUrl }]).select();
+    
+    if (data) {
+      // フォロワーに「新規投稿」通知
+      notifyFollowers('new_post', data[0].id);
+    }
+
     setNewPost(''); if (fileInputRef.current) fileInputRef.current.value = "";
     fetchData(); setUploading(false);
   }
@@ -358,10 +339,33 @@ export default function App() {
       setStats(prev => ({ ...prev, isFollowing: false, followers: prev.followers - 1 }));
     } else {
       await supabase.from('follows').insert([{ follower_id: user.id, following_id: activeProfileId }]);
-      createNotification('follow', activeProfileId);
       setStats(prev => ({ ...prev, isFollowing: true, followers: prev.followers + 1 }));
+      // フォロー通知
+      createNotification(activeProfileId, 'follow');
     }
   }
+
+  // 通知をクリックした時の処理
+  const handleNotificationClick = async (notif) => {
+    if (notif.type === 'follow') {
+      openProfile(notif.actor_id);
+    } else if (notif.resource_id && (notif.type === 'like' || notif.type === 'comment' || notif.type === 'new_post')) {
+      // 投稿を取得してモーダルを開く
+      const { data } = await supabase.from('posts').select(`*, profiles(id, username, display_name, avatar_url), likes(user_id), comments(id)`).eq('id', notif.resource_id).single();
+      if (data) {
+        const formatted = {
+           ...data,
+           like_count: data.likes?.length || 0,
+           comment_count: data.comments?.length || 0,
+           is_liked: user ? data.likes?.some(l => l.user_id === user.id) : false
+        };
+        setSelectedPost(formatted);
+      }
+    } else if (notif.type === 'new_story' || notif.type === 'story_like') {
+        // ストーリーの場合はプロフィールを開く（またはストーリービューアーを直接開くロジックを追加可能）
+        openProfile(notif.actor_id); 
+    }
+  };
 
   const getAvatar = (name, url) => url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`;
   const [dmTarget, setDmTarget] = useState(null);
@@ -372,35 +376,12 @@ export default function App() {
     <div className={`max-w-md mx-auto min-h-screen pb-20 border-x font-sans relative shadow-2xl transition-colors duration-300 ${darkMode ? 'bg-black text-white border-gray-800' : 'bg-white text-black border-gray-100'}`}>
       <script src="https://cdn.tailwindcss.com"></script>
 
-      {/* Toast Notification */}
-      {toast && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[200] w-[90%] max-w-sm animate-in slide-in-from-top duration-500 fade-in">
-          <div className={`flex items-center gap-3 p-3 rounded-2xl shadow-2xl border ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'}`}>
-             <img src={getAvatar(toast.username, toast.avatar_url)} className="w-10 h-10 rounded-full object-cover border-2 border-red-500 p-[2px]" />
-             <div className="flex-grow">
-               <p className="text-xs font-bold">{toast.username}</p>
-               <p className="text-[11px] text-gray-500 leading-tight">{toast.message}</p>
-             </div>
-             <div className="bg-red-500 w-2 h-2 rounded-full animate-pulse"></div>
-          </div>
-        </div>
-      )}
-
       {creatingStory && (
         <StoryCreator file={creatingStory} onClose={() => setCreatingStory(false)} onPublish={handleStoryPublish} myProfile={myProfile} getAvatar={getAvatar} />
       )}
 
       {viewingStory && (
-        <StoryViewer 
-          stories={groupedStories[viewingStory.userId]} 
-          initialIndex={viewingStory.index} 
-          onClose={() => setViewingStory(null)} 
-          userProfile={allProfiles.find(p => p.id === viewingStory.userId)} 
-          getAvatar={getAvatar} 
-          currentUserId={user.id} 
-          onDelete={handleDeleteStory}
-          onLike={toggleStoryLike} 
-        />
+        <StoryViewer stories={groupedStories[viewingStory.userId]} initialIndex={viewingStory.index} onClose={() => setViewingStory(null)} userProfile={allProfiles.find(p => p.id === viewingStory.userId)} getAvatar={getAvatar} currentUserId={user.id} onDelete={handleDeleteStory} onLike={handleStoryLike} />
       )}
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
@@ -408,80 +389,69 @@ export default function App() {
       {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} refreshPosts={fetchData} createNotification={createNotification} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} myProfile={myProfile} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
-      {(view === 'home' || view === 'notifications') && (
+      {view === 'home' && (
         <div className="animate-in fade-in">
           <header className={`sticky top-0 z-30 backdrop-blur-md border-b p-4 flex justify-between items-center ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-50'}`}>
-            <h1 className="text-2xl font-black bg-gradient-to-r from-blue-700 to-cyan-500 bg-clip-text text-transparent italic tracking-tighter uppercase flex items-center gap-1" onClick={() => setView('home')}>
+            <h1 className="text-2xl font-black bg-gradient-to-r from-blue-700 to-cyan-500 bg-clip-text text-transparent italic tracking-tighter uppercase flex items-center gap-1">
               <Zap size={24} className="text-blue-600 fill-blue-600" /> GridStream
             </h1>
-            <div className="flex items-center gap-5">
-              <div className="relative cursor-pointer" onClick={() => { setView('notifications'); markNotificationsRead(); }}>
-                <Heart size={26} className={`${view === 'notifications' ? 'fill-red-500 text-red-500' : ''} transition hover:text-red-500`} />
-                {unreadCount > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 flex items-center justify-center rounded-full border-2 border-black">{unreadCount}</span>}
-              </div>
-              <MessageCircle size={26} className="cursor-pointer hover:text-blue-500 transition" onClick={() => setView('messages')} />
+            <div className="relative cursor-pointer" onClick={() => setView('messages')}>
+                <MessageCircle size={24} />
             </div>
           </header>
 
-          {view === 'notifications' ? (
-            <NotificationScreen notifications={notifications} getAvatar={getAvatar} openProfile={openProfile} darkMode={darkMode} />
-          ) : (
-            <>
-              {/* Story Tray */}
-              <div className={`p-4 overflow-x-auto whitespace-nowrap scrollbar-hide flex gap-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-                <div className="inline-flex flex-col items-center gap-1 cursor-pointer relative shrink-0">
-                  <div className="relative">
-                    <div 
-                      className={`rounded-full p-[2px] ${groupedStories[user.id] ? 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500' : 'bg-transparent'}`}
-                      onClick={() => {
-                        if (groupedStories[user.id]) setViewingStory({ userId: user.id, index: 0 });
-                        else storyInputRef.current.click();
-                      }}
-                    >
-                      <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className={`w-16 h-16 rounded-full object-cover border-2 ${darkMode ? 'border-black' : 'border-white'}`} />
-                    </div>
-                    <div className="absolute bottom-0 right-0 bg-blue-500 rounded-full p-1 border-2 border-black cursor-pointer" onClick={(e) => { e.stopPropagation(); storyInputRef.current.click(); }}>
-                      <Plus size={12} className="text-white" />
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold text-gray-400">Your Story</span>
-                  <input type="file" accept="image/*" ref={storyInputRef} className="hidden" onChange={handleStoryFileSelect} />
+          <div className={`p-4 overflow-x-auto whitespace-nowrap scrollbar-hide flex gap-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
+            <div className="inline-flex flex-col items-center gap-1 cursor-pointer relative shrink-0">
+              <div className="relative">
+                <div 
+                  className={`rounded-full p-[2px] ${groupedStories[user.id] ? 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500' : 'bg-transparent'}`}
+                  onClick={() => {
+                    if (groupedStories[user.id]) setViewingStory({ userId: user.id, index: 0 });
+                    else storyInputRef.current.click();
+                  }}
+                >
+                  <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className={`w-16 h-16 rounded-full object-cover border-2 ${darkMode ? 'border-black' : 'border-white'}`} />
                 </div>
-
-                {Object.keys(groupedStories).filter(id => id !== user.id).map(userId => {
-                   const uProfile = allProfiles.find(p => p.id === userId);
-                   if (!uProfile) return null;
-                   return (
-                     <div key={userId} className="inline-flex flex-col items-center gap-1 cursor-pointer shrink-0" onClick={() => setViewingStory({ userId, index: 0 })}>
-                       <div className="p-[2px] rounded-full bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500">
-                         <img src={getAvatar(uProfile.username, uProfile.avatar_url)} className={`w-16 h-16 rounded-full object-cover border-2 ${darkMode ? 'border-black' : 'border-white'}`} />
-                       </div>
-                       <span className="text-[10px] font-bold max-w-[64px] truncate">{uProfile.display_name}</span>
-                     </div>
-                   );
-                })}
+                <div className="absolute bottom-0 right-0 bg-blue-500 rounded-full p-1 border-2 border-black cursor-pointer" onClick={(e) => { e.stopPropagation(); storyInputRef.current.click(); }}>
+                  <Plus size={12} className="text-white" />
+                </div>
               </div>
+              <span className="text-[10px] font-bold text-gray-400">Your Story</span>
+              <input type="file" accept="image/*" ref={storyInputRef} className="hidden" onChange={handleStoryFileSelect} />
+            </div>
 
-              <form onSubmit={handlePost} className={`p-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-                <div className="flex gap-3">
-                  <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-10 h-10 rounded-full object-cover cursor-pointer" onClick={() => openProfile(user.id)} />
-                  <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent font-medium" placeholder="What's happening?" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
-                </div>
-                <div className="flex justify-between items-center pl-12 mt-2">
-                  <label className="cursor-pointer text-blue-500 p-2 rounded-full transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
-                  <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs uppercase tracking-tighter">
-                    {uploading ? '...' : 'Stream'}
-                  </button>
-                </div>
-              </form>
+            {Object.keys(groupedStories).filter(id => id !== user.id).map(userId => {
+               const uProfile = allProfiles.find(p => p.id === userId);
+               if (!uProfile) return null;
+               return (
+                 <div key={userId} className="inline-flex flex-col items-center gap-1 cursor-pointer shrink-0" onClick={() => setViewingStory({ userId, index: 0 })}>
+                   <div className="p-[2px] rounded-full bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500">
+                     <img src={getAvatar(uProfile.username, uProfile.avatar_url)} className={`w-16 h-16 rounded-full object-cover border-2 ${darkMode ? 'border-black' : 'border-white'}`} />
+                   </div>
+                   <span className="text-[10px] font-bold max-w-[64px] truncate">{uProfile.display_name}</span>
+                 </div>
+               );
+            })}
+          </div>
 
-              <div className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
-                {posts.map(post => (
-                  <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} onOpenDetail={() => setSelectedPost(post)} />
-                ))}
-              </div>
-            </>
-          )}
+          <form onSubmit={handlePost} className={`p-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+            <div className="flex gap-3">
+              <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-10 h-10 rounded-full object-cover cursor-pointer" onClick={() => openProfile(user.id)} />
+              <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent font-medium" placeholder="What's happening?" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
+            </div>
+            <div className="flex justify-between items-center pl-12 mt-2">
+              <label className="cursor-pointer text-blue-500 p-2 rounded-full transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
+              <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs uppercase tracking-tighter">
+                {uploading ? '...' : 'Stream'}
+              </button>
+            </div>
+          </form>
+
+          <div className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
+            {posts.map(post => (
+              <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} onOpenDetail={() => setSelectedPost(post)} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -490,50 +460,67 @@ export default function App() {
       )}
       {view === 'search' && <SearchView posts={posts} openProfile={openProfile} searchQuery={searchQuery} setSearchQuery={setSearchQuery} setSelectedPost={setSelectedPost} darkMode={darkMode} />}
       {view === 'messages' && <MessagesList allProfiles={allProfiles} user={user} setDmTarget={setDmTarget} getAvatar={getAvatar} openProfile={openProfile} darkMode={darkMode} />}
+      {view === 'notifications' && <NotificationsView notifications={notifications} getAvatar={getAvatar} onNotificationClick={handleNotificationClick} darkMode={darkMode} markRead={markNotificationsAsRead} />}
 
       <nav className={`fixed bottom-0 max-w-md w-full border-t flex justify-around py-4 z-40 shadow-sm ${darkMode ? 'bg-black/95 border-gray-800 text-gray-600' : 'bg-white/95 border-gray-100 text-gray-300'}`}>
-        <HomeIcon onClick={() => setView('home')} className={`cursor-pointer ${view === 'home' || view === 'notifications' ? 'text-blue-600' : ''}`} />
+        <HomeIcon onClick={() => setView('home')} className={`cursor-pointer ${view === 'home' ? 'text-blue-600' : ''}`} />
         <Search onClick={() => setView('search')} className={`cursor-pointer ${view === 'search' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
-        <MessageCircle onClick={() => setView('messages')} className={`cursor-pointer ${view === 'messages' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
+        <div className="relative cursor-pointer" onClick={() => { setView('notifications'); markNotificationsAsRead(); }}>
+           <Bell className={`${view === 'notifications' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
+           {unreadCount > 0 && <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold">{unreadCount}</div>}
+        </div>
         <UserIcon onClick={() => openProfile(user.id)} className={`cursor-pointer ${view === 'profile' && activeProfileId === user.id ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
       </nav>
     </div>
   );
 }
 
-// --- Notification Screen ---
-function NotificationScreen({ notifications, getAvatar, openProfile, darkMode }) {
-  if (notifications.length === 0) {
-    return <div className="p-10 text-center text-gray-500 font-bold">No notifications yet.</div>;
-  }
+// --- Notification View ---
+function NotificationsView({ notifications, getAvatar, onNotificationClick, darkMode, markRead }) {
+  useEffect(() => { markRead(); }, []);
+
+  const getMessage = (type) => {
+    switch (type) {
+      case 'like': return 'liked your post.';
+      case 'comment': return 'commented on your post.';
+      case 'follow': return 'followed you.';
+      case 'new_post': return 'posted a new stream.';
+      case 'new_story': return 'added to their story.';
+      case 'story_like': return 'liked your story.';
+      default: return 'interacted with you.';
+    }
+  };
+
+  const getIcon = (type) => {
+    switch (type) {
+      case 'like': return <Heart size={14} className="fill-red-500 text-red-500" />;
+      case 'story_like': return <Heart size={14} className="fill-red-500 text-red-500" />;
+      case 'comment': return <MessageSquare size={14} className="fill-blue-500 text-blue-500" />;
+      case 'follow': return <UserPlus size={14} className="fill-purple-500 text-purple-500" />;
+      case 'new_post': return <Zap size={14} className="fill-yellow-500 text-yellow-500" />;
+      case 'new_story': return <Camera size={14} className="text-pink-500" />;
+      default: return <Bell size={14} />;
+    }
+  };
+
   return (
-    <div className="pb-4">
-      <h2 className="p-4 font-black uppercase tracking-widest text-xs text-gray-400">Activity</h2>
-      <div className="space-y-1">
-        {notifications.map(n => (
-          <div key={n.id} className={`flex items-center gap-4 p-4 hover:bg-gray-50/5 transition cursor-pointer ${!n.is_read ? (darkMode ? 'bg-gray-900/40' : 'bg-blue-50') : ''}`} onClick={() => openProfile(n.actor_id)}>
+    <div className="animate-in fade-in pb-20">
+      <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 bg-inherit">Notifications</header>
+      <div className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
+        {notifications.length === 0 ? (
+           <div className="p-10 text-center text-gray-500 text-sm font-bold">No notifications yet.</div>
+        ) : notifications.map(n => (
+          <div key={n.id} onClick={() => onNotificationClick(n)} className={`p-4 flex gap-3 cursor-pointer hover:bg-gray-50/10 transition ${!n.is_read ? 'bg-blue-500/10' : ''}`}>
              <div className="relative">
                <img src={getAvatar(n.profiles?.username, n.profiles?.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
-               <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border-2 ${darkMode ? 'border-black' : 'border-white'} ${n.type === 'like' || n.type === 'story_like' ? 'bg-red-500' : n.type === 'comment' ? 'bg-blue-500' : 'bg-purple-500'}`}>
-                  {n.type === 'like' || n.type === 'story_like' ? <Heart size={10} className="fill-white text-white" /> : n.type === 'comment' ? <MessageCircle size={10} className="text-white"/> : <UserIcon size={10} className="text-white"/>}
+               <div className={`absolute -bottom-1 -right-1 p-1 rounded-full ${darkMode ? 'bg-black' : 'bg-white'}`}>
+                 {getIcon(n.type)}
                </div>
              </div>
-             <div className="flex-grow text-sm">
-               <span className="font-bold mr-1">{n.profiles?.username}</span>
-               <span className="text-gray-400">
-                 {n.type === 'like' && 'liked your post.'}
-                 {n.type === 'story_like' && 'liked your story.'}
-                 {n.type === 'follow' && 'started following you.'}
-                 {n.type === 'comment' && `commented: "${n.content}"`}
-               </span>
-               <div className="text-[10px] text-gray-500 font-bold mt-1">{formatTime(n.created_at)}</div>
+             <div className="flex-col flex justify-center">
+                <p className="text-sm"><span className="font-bold">{n.profiles?.display_name}</span> <span className="text-gray-400">{getMessage(n.type)}</span></p>
+                <p className="text-[10px] text-gray-500 font-bold mt-1 uppercase">{formatTime(n.created_at)}</p>
              </div>
-             {n.resource_id && (n.type === 'like' || n.type === 'comment') && (
-               <div className="w-10 h-10 bg-gray-800 rounded-md overflow-hidden">
-                  {/* Ideally fetch the post image here, but for now just a placeholder icon if we don't have the image url in notification */}
-                  <div className="w-full h-full bg-gray-700 flex items-center justify-center"><ImageIcon size={14} className="text-gray-500"/></div>
-               </div>
-             )}
           </div>
         ))}
       </div>
@@ -698,6 +685,7 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, c
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [liked, setLiked] = useState(false);
   const STORY_DURATION = 5000; 
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
@@ -712,6 +700,7 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, c
   useEffect(() => {
     if (!currentStory) return;
     setProgress(0);
+    setLiked(false);
     startTimer();
     return () => cancelAnimationFrame(timerRef.current);
   }, [currentIndex, currentStory]);
@@ -733,6 +722,14 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, c
   const prevStory = () => { if (currentIndex > 0) setCurrentIndex(prev => prev - 1); else { setProgress(0); startTimeRef.current = Date.now(); } };
   const handlePointerDown = () => { setIsPaused(true); cancelAnimationFrame(timerRef.current); };
   const handlePointerUp = () => { setIsPaused(false); startTimeRef.current = Date.now() - (progress / 100) * STORY_DURATION; startTimer(); };
+
+  const handleLike = (e) => {
+    e.stopPropagation();
+    if (!liked) {
+      setLiked(true);
+      onLike(currentStory);
+    }
+  };
 
   if (!currentStory) return null;
 
@@ -759,22 +756,16 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, c
             <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="text-white p-2"><X size={24} /></button>
           </div>
         </div>
+        
+        {/* Story Like Button Overlay */}
+        <div className="absolute bottom-0 right-0 z-30 p-6 pb-12">
+           <button onClick={handleLike} className={`p-3 rounded-full bg-black/40 backdrop-blur-sm border border-white/20 transition active:scale-90 ${liked ? 'text-red-500' : 'text-white'}`}>
+              <Heart size={28} fill={liked ? "currentColor" : "none"} />
+           </button>
+        </div>
+
         <div className="absolute inset-0 z-10 flex"><div className="w-1/3 h-full" onClick={prevStory} /><div className="w-2/3 h-full" onClick={nextStory} /></div>
         <img src={currentStory.image_url} className="w-full h-full object-contain bg-black animate-in fade-in duration-300" />
-        
-        {/* Story Controls Bottom */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 z-20 flex justify-between items-center bg-gradient-to-t from-black/60 to-transparent">
-           <div className="flex-grow">
-             <input type="text" placeholder="Send message..." className="w-full bg-transparent border border-white/50 rounded-full px-4 py-2 text-white placeholder-white/70 outline-none backdrop-blur-sm" onClick={(e) => e.stopPropagation()}/>
-           </div>
-           <button 
-             className="ml-4 p-2 transition active:scale-90" 
-             onClick={(e) => { e.stopPropagation(); onLike(currentStory.id, currentStory.user_id, currentStory.is_liked); }}
-           >
-             <Heart size={28} className={currentStory.is_liked ? "fill-red-500 text-red-500" : "text-white"} />
-           </button>
-           <button className="ml-2 p-2 text-white"><Send size={24} /></button>
-        </div>
       </div>
     </div>
   );
@@ -918,7 +909,10 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
     e.preventDefault(); if (!commentText.trim() || !currentUser) return;
     setLoading(true); 
     await supabase.from('comments').insert([{ post_id: post.id, user_id: currentUser.id, content: commentText }]);
-    createNotification('comment', post.user_id, post.id, commentText);
+    
+    // コメント通知
+    createNotification(post.user_id, 'comment', post.id);
+
     setCommentText(''); await fetchComments(); refreshPosts(); setLoading(false);
   }
   async function handleDeleteComment(commentId) {
@@ -1125,4 +1119,4 @@ function AuthScreen({ fetchData }) {
       </form>
     </div>
   );
-            }
+        }
