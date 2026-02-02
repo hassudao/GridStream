@@ -83,18 +83,36 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => { 
+  // ユーザー確定後のデータ取得とリアルタイム購読
+  useEffect(() => {
     if (user) {
+      fetchMyProfile(user.id);
       fetchData();
       fetchNotifications();
-      // 通知のリアルタイム購読
+
+      // ★リアルタイム通知の購読を確実に設定
       const channel = supabase
-        .channel('schema-db-changes')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `receiver_id=eq.${user.id}` }, () => {
-          fetchNotifications();
-        })
-        .subscribe();
-      return () => supabase.removeChannel(channel);
+        .channel(`public:notifications:receiver_id=eq.${user.id}`) // チャンネル名を一意に
+        .on(
+          'postgres_changes', 
+          { 
+            event: 'INSERT', 
+            schema: 'public', 
+            table: 'notifications', 
+            filter: `receiver_id=eq.${user.id}` 
+          }, 
+          (payload) => {
+            console.log('リアルタイム通知受信:', payload); // これがブラウザのコンソールに出るか確認
+            fetchNotifications(); // データを再取得
+          }
+        )
+        .subscribe((status) => {
+          console.log('Realtimeステータス:', status); // 'SUBSCRIBED' と出る必要があります
+        });
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [user]);
 
