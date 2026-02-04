@@ -4,21 +4,19 @@ import {
   Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, 
   User as UserIcon, ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, 
   Trash2, MessageSquare, Plus, Type, Check, Palette, Maximize2,
-  UserPlus, UserMinus, Bell
+  UserPlus, UserMinus, Bell, MoreVertical, Image as ImageIconLucide
 } from 'lucide-react';
 
-// Cloudinary設定
+// --- (renderContent, FONT_STYLES, TEXT_COLORS 等の定数は既存のまま) ---
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
 
-// 日時フォーマット関数
 const formatTime = (dateStr) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit' });
 };
 
-// テキスト内のURLをリンク化する関数
 const renderContent = (text) => {
   if (!text) return '';
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -35,7 +33,6 @@ const renderContent = (text) => {
   });
 };
 
-// ストーリー作成用設定
 const FONT_STYLES = [
   { name: 'Classic', css: 'font-serif', label: 'Classic' },
   { name: 'Modern', css: 'font-sans font-black uppercase tracking-widest', label: 'Modern' },
@@ -175,12 +172,11 @@ export default function App() {
     }
   }
 
-  // シェア機能
   const handleShare = async (post) => {
     const shareData = {
       title: 'GridStream',
       text: post.content,
-      url: window.location.origin // 本来は投稿詳細へのURL
+      url: window.location.origin
     };
     try {
       if (navigator.share) {
@@ -299,7 +295,7 @@ export default function App() {
 
       {creatingStory && <StoryCreator file={creatingStory} onClose={() => setCreatingStory(false)} onPublish={handleStoryPublish} myProfile={myProfile} getAvatar={getAvatar} />}
       {viewingStory && <StoryViewer stories={groupedStories[viewingStory.userId]} initialIndex={viewingStory.index} onClose={() => setViewingStory(null)} userProfile={allProfiles.find(p => p.id === viewingStory.userId)} getAvatar={getAvatar} currentUserId={user.id} onDelete={handleDeleteStory} sendNotification={sendNotification} />}
-      {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
+      {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} uploadToCloudinary={uploadToCloudinary} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
       {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} refreshPosts={fetchData} sendNotification={sendNotification} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} myProfile={myProfile} darkMode={darkMode} setDarkMode={setDarkMode} />}
@@ -378,7 +374,6 @@ export default function App() {
       {view === 'messages' && <MessagesList allProfiles={allProfiles} user={user} setDmTarget={setDmTarget} getAvatar={getAvatar} openProfile={openProfile} darkMode={darkMode} />}
       {view === 'notifications' && <NotificationCenter notifications={notifications} getAvatar={getAvatar} openProfile={openProfile} setSelectedPost={(postId) => { const p = posts.find(x => x.id === postId); if(p) setSelectedPost(p); }} darkMode={darkMode} />}
 
-      {/* 下部ナビゲーション - メッセージ(DM)ボタンを復活 */}
       <nav className={`fixed bottom-0 max-w-md w-full border-t flex justify-around py-4 z-40 shadow-sm ${darkMode ? 'bg-black/95 border-gray-800 text-gray-600' : 'bg-white/95 border-gray-100 text-gray-300'}`}>
         <HomeIcon onClick={() => setView('home')} className={`cursor-pointer transition hover:scale-110 ${view === 'home' ? 'text-blue-600' : ''}`} />
         <Search onClick={() => setView('search')} className={`cursor-pointer transition hover:scale-110 ${view === 'search' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
@@ -388,6 +383,170 @@ export default function App() {
     </div>
   );
 }
+
+// --- (NotificationCenter, PostDetailModal, StoryCreator, StoryViewer, ProfileView, SettingsScreen, PostCard, SearchView 等は既存ロジックを継承) ---
+// ※以下、強化されたMessage系コンポーネント
+
+function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, darkMode }) {
+  return (
+    <div className="animate-in fade-in h-full flex flex-col">
+      <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 bg-inherit/90 backdrop-blur-md flex justify-between items-center">
+        <div className="w-8"></div>
+        <span>Messages</span>
+        <Settings size={20} className="text-gray-400" />
+      </header>
+      <div className="flex-grow overflow-y-auto">
+        {allProfiles.filter(p => p.id !== user?.id).map(u => (
+          <div key={u.id} className={`flex items-center gap-4 p-4 cursor-pointer transition ${darkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-50'}`} onClick={() => setDmTarget(u)}>
+            <div className="relative">
+              <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-sm" />
+              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-black rounded-full"></div>
+            </div>
+            <div className="flex-grow border-b border-gray-800/50 pb-4">
+              <div className="flex justify-between items-center mb-1">
+                <p className="font-black text-sm">{u.display_name}</p>
+                <p className="text-[10px] text-gray-500 font-bold">2分前</p>
+              </div>
+              <p className="text-xs text-gray-400 truncate max-w-[200px]">新しいメッセージがあります</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploadToCloudinary }) {
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const scrollRef = useRef();
+  const dmFileInputRef = useRef();
+
+  useEffect(() => {
+    fetchMessages();
+    const channel = supabase.channel(`chat:${target.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
+        if ((p.new.sender_id === currentUser.id && p.new.receiver_id === target.id) || 
+            (p.new.sender_id === target.id && p.new.receiver_id === currentUser.id)) {
+          setMessages(prev => [...prev, p.new]);
+        }
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [target]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  async function fetchMessages() {
+    const { data } = await supabase.from('messages')
+      .select('*')
+      .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${currentUser.id})`)
+      .order('created_at', { ascending: true });
+    if (data) setMessages(data);
+  }
+
+  async function sendMsg(e) {
+    e.preventDefault();
+    if (!text.trim() && !dmFileInputRef.current?.files[0]) return;
+    
+    setUploading(true);
+    let imageUrl = null;
+    if (dmFileInputRef.current?.files[0]) {
+      imageUrl = await uploadToCloudinary(dmFileInputRef.current.files[0]);
+    }
+
+    const t = text;
+    setText('');
+    if (dmFileInputRef.current) dmFileInputRef.current.value = "";
+
+    await supabase.from('messages').insert([{ 
+      text: t, 
+      sender_id: currentUser.id, 
+      receiver_id: target.id,
+      image_url: imageUrl 
+    }]);
+    setUploading(false);
+  }
+
+  async function deleteMsg(msgId) {
+    if(!window.confirm("送信を取り消しますか？")) return;
+    await supabase.from('messages').delete().eq('id', msgId).eq('sender_id', currentUser.id);
+    setMessages(prev => prev.filter(m => m.id !== msgId));
+  }
+
+  return (
+    <div className={`fixed inset-0 z-[120] flex flex-col animate-in slide-in-from-right duration-300 ${darkMode ? 'bg-black' : 'bg-[#f0f2f5]'}`}>
+      <header className={`p-4 flex items-center justify-between border-b sticky top-0 z-10 ${darkMode ? 'bg-black border-gray-800' : 'bg-white'}`}>
+        <div className="flex items-center gap-3">
+          <ChevronLeft onClick={() => setDmTarget(null)} className="cursor-pointer" />
+          <img src={getAvatar(target.username, target.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
+          <div>
+            <p className="font-black text-sm">{target.display_name}</p>
+            <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">Online</p>
+          </div>
+        </div>
+        <div className="flex gap-4 text-gray-400">
+          <MoreVertical size={20} />
+        </div>
+      </header>
+
+      <div className="flex-grow overflow-y-auto p-4 space-y-6">
+        <div className="text-center py-10">
+          <img src={getAvatar(target.username, target.avatar_url)} className="w-20 h-20 rounded-full mx-auto mb-2 border-2 border-blue-500 p-1" />
+          <h3 className="font-black text-lg">{target.display_name}</h3>
+          <p className="text-xs text-gray-500">@{target.username} • GridStream</p>
+          <button className={`mt-4 px-4 py-1.5 rounded-full text-[10px] font-black uppercase border ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>View Profile</button>
+        </div>
+
+        {messages.map(m => (
+          <div key={m.id} className={`flex flex-col ${m.sender_id === currentUser.id ? 'items-end' : 'items-start'}`}>
+            <div className={`group relative max-w-[80%] flex items-end gap-2 ${m.sender_id === currentUser.id ? 'flex-row-reverse' : 'flex-row'}`}>
+              <div 
+                className={`p-4 rounded-[1.8rem] text-sm shadow-sm transition-all ${
+                  m.sender_id === currentUser.id 
+                    ? 'bg-blue-600 text-white rounded-tr-none' 
+                    : (darkMode ? 'bg-gray-800 text-white rounded-tl-none' : 'bg-white text-gray-800 rounded-tl-none')
+                }`}
+                onDoubleClick={() => m.sender_id === currentUser.id && deleteMsg(m.id)}
+              >
+                {m.image_url && <img src={m.image_url} className="rounded-xl mb-2 max-w-full" alt="sent" />}
+                {m.text && <p className="font-medium leading-relaxed">{m.text}</p>}
+              </div>
+              <span className="text-[9px] text-gray-500 font-bold mb-1">{formatTime(m.created_at)}</span>
+              {m.sender_id === currentUser.id && <span className="text-[9px] text-blue-500 font-bold mb-1 mr-1">既読</span>}
+            </div>
+          </div>
+        ))}
+        <div ref={scrollRef} />
+      </div>
+
+      <form onSubmit={sendMsg} className={`p-4 border-t flex items-center gap-3 ${darkMode ? 'bg-black border-gray-800' : 'bg-white'}`}>
+        <label className="cursor-pointer text-gray-400 hover:text-blue-500 transition">
+          <ImageIconLucide size={24} />
+          <input type="file" accept="image/*" ref={dmFileInputRef} className="hidden" />
+        </label>
+        <div className={`flex-grow flex items-center rounded-3xl px-4 py-2 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+          <input 
+            type="text" 
+            className="flex-grow bg-transparent outline-none text-sm font-medium py-1" 
+            placeholder="メッセージを入力..." 
+            value={text} 
+            onChange={(e) => setText(e.target.value)} 
+          />
+          <Palette size={18} className="text-gray-400 ml-2" />
+        </div>
+        <button type="submit" disabled={uploading} className="bg-blue-600 text-white p-3 rounded-full shadow-lg active:scale-95 transition disabled:opacity-50">
+          <Send size={20} />
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// --- (FollowListModal, AuthScreen 等は既存のまま) ---
 
 function NotificationCenter({ notifications, getAvatar, openProfile, setSelectedPost, darkMode }) {
   const getMessage = (n) => {
@@ -455,7 +614,6 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
             {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
             <div className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{renderContent(post.content)}</div>
             <div className="flex gap-4 mb-2">
-               {/* ポップアップ内のいいねボタンに数字を追加 */}
                <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'text-gray-400 hover:text-red-500'}`}>
                  <Heart size={20} fill={post.is_liked ? "currentColor" : "none"} />
                  <span className="text-xs font-black">{post.like_count || ''}</span>
@@ -634,30 +792,6 @@ function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelect
     <div className="animate-in fade-in">
       <div className={`p-4 sticky top-0 z-10 border-b ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-100'}`}><div className="relative"><Search className="absolute left-3 top-3 text-gray-400" size={18} /><input type="text" placeholder="DISCOVER" className={`w-full rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-black uppercase ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100'}`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div></div>
       <div className="grid grid-cols-3 gap-[2px]">{posts.filter(p => p.image_url && (p.content?.includes(searchQuery) || p.profiles?.username?.includes(searchQuery))).map((post) => (<img key={post.id} src={post.image_url} className="aspect-square w-full h-full object-cover cursor-pointer hover:opacity-80 transition" onClick={() => setSelectedPost(post)} />))}</div>
-    </div>
-  );
-}
-
-function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, darkMode }) {
-  return (
-    <div className="animate-in fade-in">
-      <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 bg-inherit/90 backdrop-blur-md">Messages</header>
-      <div className="p-2">{allProfiles.filter(p => p.id !== user?.id).map(u => (<div key={u.id} className="flex items-center gap-4 p-4 rounded-2xl cursor-pointer hover:bg-gray-50/10" onClick={() => setDmTarget(u)}><img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-md" onClick={(e) => { e.stopPropagation(); openProfile(u.id); }} /><div className="flex-grow border-b pb-2"><p className="font-bold text-sm">{u.display_name}</p><p className="text-xs text-blue-500 font-medium mt-1 italic uppercase tracking-tighter">Open Chat</p></div></div>))}</div>
-    </div>
-  );
-}
-
-function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode }) {
-  const [messages, setMessages] = useState([]); const [text, setText] = useState(''); const scrollRef = useRef();
-  useEffect(() => { fetchMessages(); const channel = supabase.channel(`chat:${target.id}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => { if ((p.new.sender_id === currentUser.id && p.new.receiver_id === target.id) || (p.new.sender_id === target.id && p.new.receiver_id === currentUser.id)) setMessages(prev => [...prev, p.new]); }).subscribe(); return () => supabase.removeChannel(channel); }, [target]);
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-  async function fetchMessages() { const { data } = await supabase.from('messages').select('*').or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${currentUser.id})`).order('created_at', { ascending: true }); if (data) setMessages(data); }
-  async function sendMsg(e) { e.preventDefault(); if (!text.trim()) return; const t = text; setText(''); await supabase.from('messages').insert([{ text: t, sender_id: currentUser.id, receiver_id: target.id }]); }
-  return (
-    <div className={`fixed inset-0 z-[120] flex flex-col animate-in slide-in-from-right duration-300 ${darkMode ? 'bg-black' : 'bg-[#f8f9fa]'}`}>
-      <header className={`p-4 flex items-center gap-3 border-b sticky top-0 ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white'}`}><ChevronLeft onClick={() => setDmTarget(null)} className="cursor-pointer" /><img src={getAvatar(target.username, target.avatar_url)} className="w-10 h-10 rounded-full object-cover" /><div><p className="font-black text-sm">{target.display_name}</p><p className="text-[10px] text-gray-400 font-bold">@{target.username}</p></div></header>
-      <div className="flex-grow overflow-y-auto p-4 space-y-4">{messages.map(m => (<div key={m.id} className={`flex ${m.sender_id === currentUser.id ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[80%] p-4 rounded-[1.5rem] text-sm ${m.sender_id === currentUser.id ? 'bg-blue-600 text-white rounded-tr-none' : (darkMode ? 'bg-gray-800 text-white rounded-tl-none' : 'bg-white text-gray-800 rounded-tl-none shadow-sm')}`}>{m.text}</div></div>))}<div ref={scrollRef} /></div>
-      <form onSubmit={sendMsg} className="p-4 border-t flex gap-2"><input type="text" className={`flex-grow p-4 rounded-2xl text-sm outline-none font-medium ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} placeholder="Aa" value={text} onChange={(e) => setText(e.target.value)} /><button type="submit" className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg active:scale-95 transition"><Send size={18}/></button></form>
     </div>
   );
 }
