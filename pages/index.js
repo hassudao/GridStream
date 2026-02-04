@@ -7,7 +7,7 @@ import {
   UserPlus, UserMinus, Bell, MoreVertical, Image as ImageIconLucide
 } from 'lucide-react';
 
-// --- (renderContent, FONT_STYLES, TEXT_COLORS 等の定数は既存のまま) ---
+// --- 定数・ユーティリティ ---
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
 
@@ -173,21 +173,14 @@ export default function App() {
   }
 
   const handleShare = async (post) => {
-    const shareData = {
-      title: 'GridStream',
-      text: post.content,
-      url: window.location.origin
-    };
+    const shareData = { title: 'GridStream', text: post.content, url: window.location.origin };
     try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
+      if (navigator.share) await navigator.share(shareData);
+      else {
         await navigator.clipboard.writeText(shareData.url);
         alert('リンクをクリップボードにコピーしました！');
       }
-    } catch (err) {
-      console.error('Share error:', err);
-    }
+    } catch (err) { console.error('Share error:', err); }
   };
 
   async function uploadToCloudinary(file) {
@@ -212,11 +205,8 @@ export default function App() {
       const imageUrl = await uploadToCloudinary(processedImageBlob);
       await supabase.from('stories').insert([{ user_id: user.id, image_url: imageUrl }]);
       await notifyFollowers('story'); fetchData(); 
-    } catch (error) {
-      alert("アップロードに失敗しました");
-    } finally {
-      setUploading(false);
-    }
+    } catch (error) { alert("アップロードに失敗しました"); }
+    finally { setUploading(false); }
   };
 
   const handleDeleteStory = async (storyId) => {
@@ -384,7 +374,7 @@ export default function App() {
   );
 }
 
-// --- Message系コンポーネント (統合済み) ---
+// --- DM機能 アップデート版 ---
 
 function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, darkMode }) {
   const [lastMessages, setLastMessages] = useState({});
@@ -407,26 +397,31 @@ function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, 
 
   return (
     <div className="animate-in fade-in h-full flex flex-col">
-      <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 bg-inherit/90 backdrop-blur-md flex justify-between items-center">
+      <header className={`p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 backdrop-blur-md flex justify-between items-center ${darkMode ? 'bg-black/90' : 'bg-white/90'}`}>
         <div className="w-8"></div>
         <span>Messages</span>
         <Settings size={20} className="text-gray-400" />
       </header>
       <div className="flex-grow overflow-y-auto">
         {allProfiles.filter(p => p.id !== user?.id).map(u => (
-          <div key={u.id} className={`flex items-center gap-4 p-4 cursor-pointer transition ${darkMode ? 'hover:bg-gray-900' : 'hover:bg-gray-50'}`} onClick={() => setDmTarget(u)}>
+          <div key={u.id} className={`flex items-center gap-4 p-4 cursor-pointer transition ${darkMode ? 'hover:bg-gray-900 border-b border-gray-800/50' : 'hover:bg-gray-50 border-b border-gray-100'}`} onClick={() => setDmTarget(u)}>
             <div className="relative">
               <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-sm" />
               <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-black rounded-full"></div>
             </div>
-            <div className="flex-grow border-b border-gray-800/50 pb-4">
+            <div className="flex-grow pb-1">
               <div className="flex justify-between items-center mb-1">
                 <p className="font-black text-sm">{u.display_name}</p>
                 {lastMessages[u.id] && <p className="text-[10px] text-gray-500 font-bold">{formatTime(lastMessages[u.id].created_at)}</p>}
               </div>
-              <p className="text-xs text-gray-400 truncate max-w-[200px]">
-                {lastMessages[u.id] ? (lastMessages[u.id].image_url ? '📷 写真を送信しました' : lastMessages[u.id].text) : 'メッセージを送ってみましょう'}
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-400 truncate max-w-[180px]">
+                  {lastMessages[u.id] ? (lastMessages[u.id].image_url ? '📷 写真を送信しました' : lastMessages[u.id].text) : 'メッセージを送ってみましょう'}
+                </p>
+                {lastMessages[u.id] && lastMessages[u.id].sender_id !== user.id && !lastMessages[u.id].is_read && (
+                  <div className="w-2.5 h-2.5 bg-blue-600 rounded-full"></div>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -439,12 +434,14 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const scrollRef = useRef();
   const dmFileInputRef = useRef();
 
   useEffect(() => {
     fetchMessages();
-    markAsRead(); // 開いた瞬間に既読にする
+    markAsRead();
 
     const channel = supabase.channel(`chat:${target.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (p) => {
@@ -452,7 +449,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
           if ((p.new.sender_id === currentUser.id && p.new.receiver_id === target.id) || 
               (p.new.sender_id === target.id && p.new.receiver_id === currentUser.id)) {
             setMessages(prev => [...prev, p.new]);
-            if (p.new.receiver_id === currentUser.id) markAsRead(); // 自分宛なら既読に
+            if (p.new.receiver_id === currentUser.id) markAsRead();
           }
         } else if (p.eventType === 'DELETE') {
           setMessages(prev => prev.filter(m => m.id !== p.old.id));
@@ -484,18 +481,28 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
       .eq('is_read', false);
   }
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
   async function sendMsg(e) {
     e.preventDefault();
-    if (!text.trim() && !dmFileInputRef.current?.files[0]) return;
+    if (!text.trim() && !selectedFile) return;
     
     setUploading(true);
     let imageUrl = null;
-    if (dmFileInputRef.current?.files[0]) {
-      imageUrl = await uploadToCloudinary(dmFileInputRef.current.files[0]);
+    if (selectedFile) {
+      imageUrl = await uploadToCloudinary(selectedFile);
     }
 
     const t = text;
     setText('');
+    setSelectedFile(null);
+    setPreviewUrl(null);
     if (dmFileInputRef.current) dmFileInputRef.current.value = "";
 
     await supabase.from('messages').insert([{ 
@@ -510,6 +517,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
 
   async function deleteMsg(msgId) {
     if(!window.confirm("送信を取り消しますか？")) return;
+    setMessages(prev => prev.filter(m => m.id !== msgId)); // 即座に反映
     await supabase.from('messages').delete().eq('id', msgId).eq('sender_id', currentUser.id);
   }
 
@@ -521,7 +529,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
           <img src={getAvatar(target.username, target.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
           <div>
             <p className="font-black text-sm">{target.display_name}</p>
-            <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">Online</p>
+            <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">Active now</p>
           </div>
         </div>
         <div className="flex gap-4 text-gray-400">
@@ -529,7 +537,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
         </div>
       </header>
 
-      <div className="flex-grow overflow-y-auto p-4 space-y-6">
+      <div className="flex-grow overflow-y-auto p-4 space-y-6 scrollbar-hide">
         <div className="text-center py-10">
           <img src={getAvatar(target.username, target.avatar_url)} className="w-20 h-20 rounded-full mx-auto mb-2 border-2 border-blue-500 p-1" />
           <h3 className="font-black text-lg">{target.display_name}</h3>
@@ -548,8 +556,8 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
                 }`}
                 onDoubleClick={() => m.sender_id === currentUser.id && deleteMsg(m.id)}
               >
-                {m.image_url && <img src={m.image_url} className="rounded-xl mb-2 max-w-full" alt="sent" />}
-                {m.text && <p className="font-medium leading-relaxed">{m.text}</p>}
+                {m.image_url && <img src={m.image_url} className="rounded-xl mb-2 max-w-full cursor-zoom-in" alt="sent" />}
+                {m.text && <p className="font-medium leading-relaxed break-words">{m.text}</p>}
               </div>
               <div className="flex flex-col items-center">
                  {m.sender_id === currentUser.id && m.is_read && <span className="text-[9px] text-blue-500 font-bold mb-0.5">既読</span>}
@@ -561,30 +569,41 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
         <div ref={scrollRef} />
       </div>
 
-      <form onSubmit={sendMsg} className={`p-4 border-t flex items-center gap-3 ${darkMode ? 'bg-black border-gray-800' : 'bg-white'}`}>
-        <label className="cursor-pointer text-gray-400 hover:text-blue-500 transition">
-          <ImageIconLucide size={24} />
-          <input type="file" accept="image/*" ref={dmFileInputRef} className="hidden" />
-        </label>
-        <div className={`flex-grow flex items-center rounded-3xl px-4 py-2 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-          <input 
-            type="text" 
-            className="flex-grow bg-transparent outline-none text-sm font-medium py-1" 
-            placeholder="メッセージを入力..." 
-            value={text} 
-            onChange={(e) => setText(e.target.value)} 
-          />
-          <Palette size={18} className="text-gray-400 ml-2" />
-        </div>
-        <button type="submit" disabled={uploading} className="bg-blue-600 text-white p-3 rounded-full shadow-lg active:scale-95 transition disabled:opacity-50">
-          <Send size={20} />
-        </button>
-      </form>
+      {/* 送信エリア */}
+      <div className={`p-4 border-t ${darkMode ? 'bg-black border-gray-800' : 'bg-white'}`}>
+        {previewUrl && (
+          <div className="mb-2 relative inline-block">
+            <img src={previewUrl} className="w-20 h-20 object-cover rounded-xl border-2 border-blue-500" />
+            <button onClick={() => { setSelectedFile(null); setPreviewUrl(null); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg">
+              <X size={12} />
+            </button>
+          </div>
+        )}
+        <form onSubmit={sendMsg} className="flex items-center gap-3">
+          <label className="cursor-pointer text-gray-400 hover:text-blue-500 transition">
+            <ImageIconLucide size={24} />
+            <input type="file" accept="image/*" ref={dmFileInputRef} className="hidden" onChange={handleFileChange} />
+          </label>
+          <div className={`flex-grow flex items-center rounded-3xl px-4 py-2 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+            <input 
+              type="text" 
+              className="flex-grow bg-transparent outline-none text-sm font-medium py-1" 
+              placeholder="メッセージを入力..." 
+              value={text} 
+              onChange={(e) => setText(e.target.value)} 
+            />
+            <Palette size={18} className="text-gray-400 ml-2" />
+          </div>
+          <button type="submit" disabled={uploading || (!text.trim() && !selectedFile)} className="bg-blue-600 text-white p-3 rounded-full shadow-lg active:scale-95 transition disabled:opacity-50">
+            {uploading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Send size={20} />}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
 
-// --- (既存の NotificationCenter, PostDetailModal, StoryCreator, StoryViewer, ProfileView, SettingsScreen, PostCard, SearchView, FollowListModal, AuthScreen はそのまま維持) ---
+// --- 以下、既存コンポーネント ---
 
 function NotificationCenter({ notifications, getAvatar, openProfile, setSelectedPost, darkMode }) {
   const getMessage = (n) => {
