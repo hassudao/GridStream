@@ -7,15 +7,18 @@ import {
   UserPlus, UserMinus, Bell
 } from 'lucide-react';
 
+// Cloudinary設定 (実際の環境に合わせて変更してください)
 const CLOUDINARY_CLOUD_NAME = 'dtb3jpadj'; 
 const CLOUDINARY_UPLOAD_PRESET = 'alpha-sns';
 
+// 日時フォーマット関数
 const formatTime = (dateStr) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
   return date.toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
+// テキスト内のURLをリンク化する関数
 const renderContent = (text) => {
   if (!text) return '';
   const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -32,6 +35,7 @@ const renderContent = (text) => {
   });
 };
 
+// ストーリー作成用フォントスタイル定義
 const FONT_STYLES = [
   { name: 'Classic', css: 'font-serif', label: 'Classic' },
   { name: 'Modern', css: 'font-sans font-black uppercase tracking-widest', label: 'Modern' },
@@ -39,6 +43,7 @@ const FONT_STYLES = [
   { name: 'Neon', css: 'font-cursive italic', label: 'Neon' },
 ];
 
+// ストーリー作成用テキストカラー定義
 const TEXT_COLORS = ['#FFFFFF', '#000000', '#FF3B30', '#FF9500', '#FFCC00', '#4CD964', '#5AC8FA', '#007AFF', '#5856D6', '#FF2D55'];
 
 export default function App() {
@@ -63,6 +68,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPost, setSelectedPost] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [dmTarget, setDmTarget] = useState(null); // DMターゲット
   
   // 通知用ステート
   const [notifications, setNotifications] = useState([]);
@@ -90,9 +96,8 @@ export default function App() {
       fetchData();
       fetchNotifications();
 
-      // ★リアルタイム通知の購読を確実に設定
       const channel = supabase
-        .channel(`public:notifications:receiver_id=eq.${user.id}`) // チャンネル名を一意に
+        .channel(`public:notifications:receiver_id=eq.${user.id}`)
         .on(
           'postgres_changes', 
           { 
@@ -102,13 +107,10 @@ export default function App() {
             filter: `receiver_id=eq.${user.id}` 
           }, 
           (payload) => {
-            console.log('リアルタイム通知受信:', payload); // これがブラウザのコンソールに出るか確認
-            fetchNotifications(); // データを再取得
+            fetchNotifications(); 
           }
         )
-        .subscribe((status) => {
-          console.log('Realtimeステータス:', status); // 'SUBSCRIBED' と出る必要があります
-        });
+        .subscribe();
 
       return () => {
         supabase.removeChannel(channel);
@@ -143,6 +145,7 @@ export default function App() {
   }
 
   async function fetchData() {
+    // 投稿データの取得
     const { data: postsData } = await supabase
       .from('posts')
       .select(`*, profiles(id, username, display_name, avatar_url), likes(user_id), comments(id)`)
@@ -158,6 +161,7 @@ export default function App() {
       setPosts(formattedPosts);
     }
 
+    // ストーリーデータの取得 (24時間以内)
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: storiesData } = await supabase
       .from('stories')
@@ -187,13 +191,14 @@ export default function App() {
     }
   }
 
-  async function sendNotification(receiverId, type, postId = null) {
+  async function sendNotification(receiverId, type, postId = null, storyId = null) {
     if (!user || user.id === receiverId) return;
     await supabase.from('notifications').insert([{
       sender_id: user.id,
       receiver_id: receiverId,
       type: type,
       post_id: postId,
+      story_id: storyId,
       is_read: false
     }]);
   }
@@ -217,7 +222,7 @@ export default function App() {
     }
   }
 
-  // --- アクション系 (通知ロジックを追加) ---
+  // --- アクション系 ---
 
   async function uploadToCloudinary(file) {
     const formData = new FormData();
@@ -286,6 +291,14 @@ export default function App() {
     fetchData(); setUploading(false);
   }
 
+  // 投稿削除処理
+  async function handleDeletePost(postId) {
+    if(!window.confirm("この投稿を削除しますか？")) return;
+    await supabase.from('posts').delete().eq('id', postId);
+    setPosts(posts.filter(p => p.id !== postId));
+    setSelectedPost(null);
+  }
+
   const openProfile = async (userId) => {
     setActiveProfileId(userId);
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
@@ -314,7 +327,6 @@ export default function App() {
   }
 
   const getAvatar = (name, url) => url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`;
-  const [dmTarget, setDmTarget] = useState(null);
 
   if (!user) return <AuthScreen fetchData={fetchData} />;
 
@@ -327,12 +339,37 @@ export default function App() {
       )}
 
       {viewingStory && (
-        <StoryViewer stories={groupedStories[viewingStory.userId]} initialIndex={viewingStory.index} onClose={() => setViewingStory(null)} userProfile={allProfiles.find(p => p.id === viewingStory.userId)} getAvatar={getAvatar} currentUserId={user.id} onDelete={handleDeleteStory} />
+        <StoryViewer 
+          stories={groupedStories[viewingStory.userId]} 
+          initialIndex={viewingStory.index} 
+          onClose={() => setViewingStory(null)} 
+          userProfile={allProfiles.find(p => p.id === viewingStory.userId)} 
+          getAvatar={getAvatar} 
+          currentUserId={user.id} 
+          onDelete={handleDeleteStory}
+          sendNotification={sendNotification} 
+        />
       )}
 
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} />}
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
-      {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={(id) => { if(window.confirm("削除しますか？")){supabase.from('posts').delete().eq('id', id); setPosts(p => p.filter(x => x.id !== id)); setSelectedPost(null);}}} onLike={toggleLike} onShare={(p) => alert("Shared!")} currentUser={user} darkMode={darkMode} refreshPosts={fetchData} sendNotification={sendNotification} />}
+      
+      {selectedPost && (
+        <PostDetailModal 
+          post={selectedPost} 
+          onClose={() => setSelectedPost(null)} 
+          getAvatar={getAvatar} 
+          openProfile={openProfile} 
+          onDelete={handleDeletePost} 
+          onLike={toggleLike} 
+          onShare={(p) => alert("Shared!")} 
+          currentUser={user} 
+          darkMode={darkMode} 
+          refreshPosts={fetchData} 
+          sendNotification={sendNotification} 
+        />
+      )}
+
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} myProfile={myProfile} darkMode={darkMode} setDarkMode={setDarkMode} />}
 
       {view === 'home' && (
@@ -399,42 +436,68 @@ export default function App() {
 
           <div className={`divide-y ${darkMode ? 'divide-gray-800' : 'divide-gray-100'}`}>
             {posts.map(post => (
-              <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onLike={toggleLike} onShare={() => alert("Shared!")} currentUser={user} darkMode={darkMode} onOpenDetail={() => setSelectedPost(post)} />
+              <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onLike={toggleLike} onShare={() => alert("Shared!")} currentUser={user} darkMode={darkMode} onOpenDetail={() => setSelectedPost(post)} onDelete={handleDeletePost} />
             ))}
           </div>
         </div>
       )}
 
       {view === 'profile' && profileInfo && (
-        <ProfileView user={user} activeProfileId={activeProfileId} profileInfo={profileInfo} posts={posts} isEditing={isEditing} setIsEditing={setIsEditing} editData={editData} setEditData={setEditData} handleUpdateProfile={async () => {
-          setUploading(true);
-          let { avatar_url, header_url } = editData;
-          if (avatarInputRef.current?.files[0]) avatar_url = await uploadToCloudinary(avatarInputRef.current.files[0]);
-          if (headerInputRef.current?.files[0]) header_url = await uploadToCloudinary(headerInputRef.current.files[0]);
-          await supabase.from('profiles').update({ ...editData, avatar_url, header_url }).eq('id', user.id);
-          await fetchMyProfile(user.id); setIsEditing(false); setUploading(false);
-        }} uploading={uploading} avatarInputRef={avatarInputRef} headerInputRef={headerInputRef} getAvatar={getAvatar} openProfile={openProfile} toggleFollow={toggleFollow} stats={stats} setShowFollowList={setShowFollowList} setShowSettings={setShowSettings} darkMode={darkMode} setView={setView} toggleLike={toggleLike} handleShare={() => {}} setSelectedPost={setSelectedPost} />
+        <ProfileView 
+          user={user} 
+          activeProfileId={activeProfileId} 
+          profileInfo={profileInfo} 
+          posts={posts} 
+          isEditing={isEditing} 
+          setIsEditing={setIsEditing} 
+          editData={editData} 
+          setEditData={setEditData} 
+          handleUpdateProfile={async () => {
+            setUploading(true);
+            let { avatar_url, header_url } = editData;
+            if (avatarInputRef.current?.files[0]) avatar_url = await uploadToCloudinary(avatarInputRef.current.files[0]);
+            if (headerInputRef.current?.files[0]) header_url = await uploadToCloudinary(headerInputRef.current.files[0]);
+            await supabase.from('profiles').update({ ...editData, avatar_url, header_url }).eq('id', user.id);
+            await fetchMyProfile(user.id); setIsEditing(false); setUploading(false);
+          }} 
+          uploading={uploading} 
+          avatarInputRef={avatarInputRef} 
+          headerInputRef={headerInputRef} 
+          getAvatar={getAvatar} 
+          openProfile={openProfile} 
+          toggleFollow={toggleFollow} 
+          stats={stats} 
+          setShowFollowList={setShowFollowList} 
+          setShowSettings={setShowSettings} 
+          darkMode={darkMode} 
+          setView={setView} 
+          toggleLike={toggleLike} 
+          handleShare={() => {}} 
+          setSelectedPost={setSelectedPost} 
+          onDeletePost={handleDeletePost}
+        />
       )}
       
       {view === 'search' && <SearchView posts={posts} openProfile={openProfile} searchQuery={searchQuery} setSearchQuery={setSearchQuery} setSelectedPost={setSelectedPost} darkMode={darkMode} />}
       {view === 'messages' && <MessagesList allProfiles={allProfiles} user={user} setDmTarget={setDmTarget} getAvatar={getAvatar} openProfile={openProfile} darkMode={darkMode} />}
       {view === 'notifications' && <NotificationCenter notifications={notifications} getAvatar={getAvatar} openProfile={openProfile} setSelectedPost={(postId) => { const p = posts.find(x => x.id === postId); if(p) setSelectedPost(p); }} darkMode={darkMode} />}
 
+      {/* 下部ナビゲーション (通知ボタン削除) */}
       <nav className={`fixed bottom-0 max-w-md w-full border-t flex justify-around py-4 z-40 shadow-sm ${darkMode ? 'bg-black/95 border-gray-800 text-gray-600' : 'bg-white/95 border-gray-100 text-gray-300'}`}>
-        <HomeIcon onClick={() => setView('home')} className={`cursor-pointer ${view === 'home' ? 'text-blue-600' : ''}`} />
-        <Search onClick={() => setView('search')} className={`cursor-pointer ${view === 'search' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
-        <Bell onClick={() => { setView('notifications'); markNotificationsAsRead(); }} className={`cursor-pointer ${view === 'notifications' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
-        <UserIcon onClick={() => openProfile(user.id)} className={`cursor-pointer ${view === 'profile' && activeProfileId === user.id ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
+        <HomeIcon onClick={() => setView('home')} className={`cursor-pointer transition hover:scale-110 ${view === 'home' ? 'text-blue-600' : ''}`} />
+        <Search onClick={() => setView('search')} className={`cursor-pointer transition hover:scale-110 ${view === 'search' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
+        <UserIcon onClick={() => openProfile(user.id)} className={`cursor-pointer transition hover:scale-110 ${view === 'profile' && activeProfileId === user.id ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
       </nav>
     </div>
   );
 }
 
-// --- 通知センターコンポーネント ---
+// --- 通知センター ---
 function NotificationCenter({ notifications, getAvatar, openProfile, setSelectedPost, darkMode }) {
   const getMessage = (n) => {
     switch (n.type) {
       case 'like': return 'あなたの投稿にいいねしました';
+      case 'story_like': return 'ストーリーズにいいねしました'; // ストーリー通知追加
       case 'comment': return 'あなたの投稿にコメントしました';
       case 'follow': return 'あなたをフォローしました';
       case 'post': return '新しい投稿をアップしました';
@@ -467,7 +530,7 @@ function NotificationCenter({ notifications, getAvatar, openProfile, setSelected
                 </p>
                 <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase">{formatTime(n.created_at)}</p>
               </div>
-              {n.type === 'like' && <Heart size={16} className="text-red-500 fill-red-500" />}
+              {(n.type === 'like' || n.type === 'story_like') && <Heart size={16} className="text-red-500 fill-red-500" />}
               {n.type === 'follow' && <UserPlus size={16} className="text-blue-500" />}
               {n.type === 'comment' && <MessageSquare size={16} className="text-green-500" />}
             </div>
@@ -478,17 +541,19 @@ function NotificationCenter({ notifications, getAvatar, openProfile, setSelected
   );
 }
 
-// --- 既存コンポーネントの修正 (コメント通知追加) ---
+// --- 投稿詳細モーダル (コメント・削除機能修正) ---
 function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLike, onShare, currentUser, darkMode, refreshPosts, sendNotification }) {
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(false);
   
   useEffect(() => { fetchComments(); }, [post.id]);
+
   async function fetchComments() {
     const { data } = await supabase.from('comments').select('*, profiles(id, username, display_name, avatar_url)').eq('post_id', post.id).order('created_at', { ascending: false });
     if (data) setComments(data);
   }
+
   async function handlePostComment(e) {
     e.preventDefault(); if (!commentText.trim() || !currentUser) return;
     setLoading(true); 
@@ -496,26 +561,53 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
     sendNotification(post.user_id, 'comment', post.id); // コメント通知
     setCommentText(''); await fetchComments(); refreshPosts(); setLoading(false);
   }
-  // ... (以下、既存のPostDetailModalと同じ)
+
+  async function handleDeleteComment(commentId) {
+    if (!window.confirm("コメントを削除しますか？")) return;
+    await supabase.from('comments').delete().eq('id', commentId).eq('user_id', currentUser.id);
+    setComments(prev => prev.filter(c => c.id !== commentId));
+    refreshPosts();
+  }
+
   return (
     <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-4">
       <div className={`w-full max-w-md rounded-[2.5rem] flex flex-col h-[85vh] overflow-hidden shadow-2xl ${darkMode ? 'bg-black border border-gray-800' : 'bg-white text-black'}`}>
         <div className={`p-4 border-b flex items-center justify-between ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-          <div className="flex items-center gap-3" onClick={() => { onClose(); openProfile(post.profiles?.id); }}><img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" /><div className="flex flex-col"><span className="font-black text-[10px]">@{post.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(post.created_at)}</span></div></div>
-          <button onClick={onClose} className="p-2 text-gray-400"><X size={24}/></button>
+          <div className="flex items-center gap-3" onClick={() => { onClose(); openProfile(post.profiles?.id); }}>
+            <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" />
+            <div className="flex flex-col"><span className="font-black text-[10px]">@{post.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(post.created_at)}</span></div>
+          </div>
+          <div className="flex items-center gap-2">
+            {currentUser.id === post.user_id && (
+              <button onClick={() => { onDelete(post.id); onClose(); }} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={20}/></button>
+            )}
+            <button onClick={onClose} className="p-2 text-gray-400"><X size={24}/></button>
+          </div>
         </div>
         <div className="flex-grow overflow-y-auto">
           <div className="p-5 border-b">
             {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
-            <div className="font-medium leading-relaxed mb-4">{renderContent(post.content)}</div>
+            <div className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{renderContent(post.content)}</div>
+            <div className="flex gap-4 mb-2">
+               <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'text-gray-400 hover:text-red-500'}`}><Heart size={20} fill={post.is_liked ? "currentColor" : "none"} /></button>
+               <button className="text-gray-400"><Share2 size={20} /></button>
+            </div>
           </div>
           <div className="p-5 space-y-4 pb-10">
             {comments.map(c => (
-              <div key={c.id} className="flex gap-3">
+              <div key={c.id} className="flex gap-3 group">
                 <img src={getAvatar(c.profiles?.username, c.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" />
-                <div className={`flex-grow p-3 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-                  <p className="font-black text-[10px] mb-1">@{c.profiles?.username}</p>
-                  <p className="text-sm font-medium">{c.content}</p>
+                <div className="flex-grow">
+                   <div className={`p-3 rounded-2xl inline-block ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                    <p className="font-black text-[10px] mb-1">@{c.profiles?.username}</p>
+                    <p className="text-sm font-medium">{c.content}</p>
+                   </div>
+                   <div className="flex items-center gap-2 mt-1 ml-2">
+                      <span className="text-[10px] text-gray-500">{formatTime(c.created_at)}</span>
+                      {currentUser.id === c.user_id && (
+                        <button onClick={() => handleDeleteComment(c.id)} className="text-[10px] text-red-500 font-bold opacity-0 group-hover:opacity-100 transition">削除</button>
+                      )}
+                   </div>
                 </div>
               </div>
             ))}
@@ -529,9 +621,6 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
     </div>
   );
 }
-
-// ... (以下、以前のStoryCreator, StoryViewer, ProfileView, SearchView, MessagesList, DMScreen, FollowListModal, SettingsScreen, PostCard, AuthScreenを継続して利用)
-// ※ 非常に長くなるため、通知機能に関連しない下位コンポーネントは前回のロジックを維持してください。
 
 // --- ストーリー作成 (移動・拡大縮小機能付き) ---
 function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
@@ -685,11 +774,12 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
   );
 }
 
-// --- ストーリービューアー ---
-function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, currentUserId, onDelete }) {
+// --- ストーリービューアー (いいね機能追加) ---
+function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, currentUserId, onDelete, sendNotification }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [isLiked, setIsLiked] = useState(false); // いいね状態
   const STORY_DURATION = 5000; 
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
@@ -704,9 +794,29 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, c
   useEffect(() => {
     if (!currentStory) return;
     setProgress(0);
+    checkLikeStatus(currentStory.id); // いいね状態確認
     startTimer();
     return () => cancelAnimationFrame(timerRef.current);
   }, [currentIndex, currentStory]);
+
+  const checkLikeStatus = async (storyId) => {
+    // story_likesテーブルが存在すると仮定
+    const { data } = await supabase.from('story_likes').select('*').eq('story_id', storyId).eq('user_id', currentUserId).maybeSingle();
+    setIsLiked(!!data);
+  };
+
+  const handleToggleLike = async (e) => {
+    e.stopPropagation();
+    const newStatus = !isLiked;
+    setIsLiked(newStatus);
+    
+    if (newStatus) {
+      await supabase.from('story_likes').insert([{ story_id: currentStory.id, user_id: currentUserId }]);
+      sendNotification(currentStory.user_id, 'story_like', null, currentStory.id);
+    } else {
+      await supabase.from('story_likes').delete().eq('story_id', currentStory.id).eq('user_id', currentUserId);
+    }
+  };
 
   const startTimer = () => {
     startTimeRef.current = Date.now();
@@ -753,12 +863,19 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, c
         </div>
         <div className="absolute inset-0 z-10 flex"><div className="w-1/3 h-full" onClick={prevStory} /><div className="w-2/3 h-full" onClick={nextStory} /></div>
         <img src={currentStory.image_url} className="w-full h-full object-contain bg-black animate-in fade-in duration-300" />
+        
+        {/* ストーリーいいねボタン */}
+        <div className="absolute bottom-6 right-4 z-30">
+          <button onClick={handleToggleLike} className={`p-3 rounded-full bg-black/40 backdrop-blur-sm transition active:scale-90 ${isLiked ? 'text-red-500' : 'text-white'}`}>
+            <Heart size={28} fill={isLiked ? "currentColor" : "none"} />
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, setIsEditing, editData, setEditData, handleUpdateProfile, uploading, avatarInputRef, headerInputRef, getAvatar, openProfile, toggleFollow, stats, setShowFollowList, setShowSettings, darkMode, setView, toggleLike, handleShare, setSelectedPost }) {
+function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, setIsEditing, editData, setEditData, handleUpdateProfile, uploading, avatarInputRef, headerInputRef, getAvatar, openProfile, toggleFollow, stats, setShowFollowList, setShowSettings, darkMode, setView, toggleLike, handleShare, setSelectedPost, onDeletePost }) {
   if (isEditing) {
     return (
       <div className="space-y-6">
@@ -818,7 +935,7 @@ function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, set
       </div>
       <div className={`divide-y mt-8 border-t ${darkMode ? 'border-gray-800 divide-gray-800' : 'border-gray-100 divide-gray-100'}`}>
         {posts.filter(p => p.user_id === activeProfileId).map(post => (
-          <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} onOpenDetail={() => setSelectedPost(post)} />
+          <PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} onOpenDetail={() => setSelectedPost(post)} onDelete={onDeletePost} />
         ))}
       </div>
     </>
@@ -858,7 +975,7 @@ function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
   );
 }
 
-function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, darkMode, onOpenDetail }) {
+function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, darkMode, onOpenDetail, onDelete }) {
   return (
     <article className={`p-4 flex gap-3 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
       <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles?.id)} />
@@ -868,7 +985,12 @@ function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, 
             <span className="font-black text-sm truncate">{post.profiles?.display_name}</span>
             <span className="text-gray-400 text-[11px] font-bold truncate">@{post.profiles?.username}</span>
           </div>
-          <span className="text-[10px] text-gray-400 font-bold whitespace-nowrap pt-1">{formatTime(post.created_at)}</span>
+          <div className="flex items-center gap-2">
+             <span className="text-[10px] text-gray-400 font-bold whitespace-nowrap pt-1">{formatTime(post.created_at)}</span>
+             {currentUser.id === post.user_id && (
+               <button onClick={(e) => { e.stopPropagation(); onDelete(post.id); }} className="text-gray-400 hover:text-red-500 transition"><Trash2 size={14}/></button>
+             )}
+          </div>
         </div>
         <div className="text-[15px] mt-1 font-medium leading-relaxed whitespace-pre-wrap">{renderContent(post.content)}</div>
         {post.image_url && <img src={post.image_url} onClick={onOpenDetail} className="mt-3 rounded-2xl w-full max-h-80 object-cover border border-gray-100/10 cursor-pointer hover:brightness-95 transition" />}
@@ -881,19 +1003,6 @@ function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, 
     </article>
   );
 }
-
-
-  async function handlePostComment(e) {
-    e.preventDefault(); if (!commentText.trim() || !currentUser) return;
-    setLoading(true); await supabase.from('comments').insert([{ post_id: post.id, user_id: currentUser.id, content: commentText }]);
-    setCommentText(''); await fetchComments(); refreshPosts(); setLoading(false);
-  }
-  async function handleDeleteComment(commentId) {
-    if (!window.confirm("削除しますか？")) return;
-    await supabase.from('comments').delete().eq('id', commentId).eq('user_id', currentUser.id);
-    setComments(prev => prev.filter(c => c.id !== commentId)); refreshPosts();
-  }
-
 
 function SearchView({ posts, openProfile, searchQuery, setSearchQuery, setSelectedPost, darkMode }) {
   return (
@@ -1039,7 +1148,7 @@ function AuthScreen({ fetchData }) {
         </div>
       </div>
       
-      <h2 className="text-2xl font-black mb-2 italic uppercase">Join Beta</h2>
+      <h2 className="text-2xl font-black mb-2 italic uppercase">JOIN GRIDSTREAM</h2>
       
       <form onSubmit={step === 4 ? handleAuth : nextStep} className="w-full max-w-xs space-y-6">
         {step === 1 && (
@@ -1080,4 +1189,4 @@ function AuthScreen({ fetchData }) {
       </form>
     </div>
   );
-        }
+                                                }
