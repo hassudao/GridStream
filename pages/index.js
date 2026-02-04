@@ -384,10 +384,27 @@ export default function App() {
   );
 }
 
-// --- (NotificationCenter, PostDetailModal, StoryCreator, StoryViewer, ProfileView, SettingsScreen, PostCard, SearchView 等は既存ロジックを継承) ---
-// ※以下、強化されたMessage系コンポーネント
+// --- Message系コンポーネント (統合済み) ---
 
 function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, darkMode }) {
+  const [lastMessages, setLastMessages] = useState({});
+
+  useEffect(() => {
+    fetchLastMessages();
+  }, [allProfiles]);
+
+  async function fetchLastMessages() {
+    const { data } = await supabase.from('messages').select('*').or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`).order('created_at', { ascending: false });
+    if (data) {
+      const latest = {};
+      data.forEach(m => {
+        const otherId = m.sender_id === user.id ? m.receiver_id : m.sender_id;
+        if (!latest[otherId]) latest[otherId] = m;
+      });
+      setLastMessages(latest);
+    }
+  }
+
   return (
     <div className="animate-in fade-in h-full flex flex-col">
       <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 bg-inherit/90 backdrop-blur-md flex justify-between items-center">
@@ -405,9 +422,11 @@ function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, 
             <div className="flex-grow border-b border-gray-800/50 pb-4">
               <div className="flex justify-between items-center mb-1">
                 <p className="font-black text-sm">{u.display_name}</p>
-                <p className="text-[10px] text-gray-500 font-bold">2分前</p>
+                {lastMessages[u.id] && <p className="text-[10px] text-gray-500 font-bold">{formatTime(lastMessages[u.id].created_at)}</p>}
               </div>
-              <p className="text-xs text-gray-400 truncate max-w-[200px]">新しいメッセージがあります</p>
+              <p className="text-xs text-gray-400 truncate max-w-[200px]">
+                {lastMessages[u.id] ? (lastMessages[u.id].image_url ? '📷 写真を送信しました' : lastMessages[u.id].text) : 'メッセージを送ってみましょう'}
+              </p>
             </div>
           </div>
         ))}
@@ -425,11 +444,20 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
 
   useEffect(() => {
     fetchMessages();
+    markAsRead(); // 開いた瞬間に既読にする
+
     const channel = supabase.channel(`chat:${target.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
-        if ((p.new.sender_id === currentUser.id && p.new.receiver_id === target.id) || 
-            (p.new.sender_id === target.id && p.new.receiver_id === currentUser.id)) {
-          setMessages(prev => [...prev, p.new]);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (p) => {
+        if (p.eventType === 'INSERT') {
+          if ((p.new.sender_id === currentUser.id && p.new.receiver_id === target.id) || 
+              (p.new.sender_id === target.id && p.new.receiver_id === currentUser.id)) {
+            setMessages(prev => [...prev, p.new]);
+            if (p.new.receiver_id === currentUser.id) markAsRead(); // 自分宛なら既読に
+          }
+        } else if (p.eventType === 'DELETE') {
+          setMessages(prev => prev.filter(m => m.id !== p.old.id));
+        } else if (p.eventType === 'UPDATE') {
+          setMessages(prev => prev.map(m => m.id === p.new.id ? p.new : m));
         }
       })
       .subscribe();
@@ -446,6 +474,14 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
       .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${currentUser.id})`)
       .order('created_at', { ascending: true });
     if (data) setMessages(data);
+  }
+
+  async function markAsRead() {
+    await supabase.from('messages')
+      .update({ is_read: true })
+      .eq('receiver_id', currentUser.id)
+      .eq('sender_id', target.id)
+      .eq('is_read', false);
   }
 
   async function sendMsg(e) {
@@ -466,7 +502,8 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
       text: t, 
       sender_id: currentUser.id, 
       receiver_id: target.id,
-      image_url: imageUrl 
+      image_url: imageUrl,
+      is_read: false
     }]);
     setUploading(false);
   }
@@ -474,7 +511,6 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
   async function deleteMsg(msgId) {
     if(!window.confirm("送信を取り消しますか？")) return;
     await supabase.from('messages').delete().eq('id', msgId).eq('sender_id', currentUser.id);
-    setMessages(prev => prev.filter(m => m.id !== msgId));
   }
 
   return (
@@ -515,8 +551,10 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
                 {m.image_url && <img src={m.image_url} className="rounded-xl mb-2 max-w-full" alt="sent" />}
                 {m.text && <p className="font-medium leading-relaxed">{m.text}</p>}
               </div>
-              <span className="text-[9px] text-gray-500 font-bold mb-1">{formatTime(m.created_at)}</span>
-              {m.sender_id === currentUser.id && <span className="text-[9px] text-blue-500 font-bold mb-1 mr-1">既読</span>}
+              <div className="flex flex-col items-center">
+                 {m.sender_id === currentUser.id && m.is_read && <span className="text-[9px] text-blue-500 font-bold mb-0.5">既読</span>}
+                 <span className="text-[9px] text-gray-500 font-bold mb-1">{formatTime(m.created_at)}</span>
+              </div>
             </div>
           </div>
         ))}
@@ -546,7 +584,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
   );
 }
 
-// --- (FollowListModal, AuthScreen 等は既存のまま) ---
+// --- (既存の NotificationCenter, PostDetailModal, StoryCreator, StoryViewer, ProfileView, SettingsScreen, PostCard, SearchView, FollowListModal, AuthScreen はそのまま維持) ---
 
 function NotificationCenter({ notifications, getAvatar, openProfile, setSelectedPost, darkMode }) {
   const getMessage = (n) => {
