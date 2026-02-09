@@ -5,7 +5,7 @@ import {
   User as UserIcon, ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, 
   Trash2, MessageSquare, Plus, Type, Check, Palette, Maximize2,
   UserPlus, UserMinus, Bell, MoreVertical, Image as ImageIconLucide,
-  Newspaper // ニュース用アイコン追加
+  Newspaper, Ban, Flag, VolumeX
 } from 'lucide-react';
 
 // --- 定数・ユーティリティ ---
@@ -68,7 +68,7 @@ export default function App() {
   
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [dmUnreadTotal, setDmUnreadTotal] = useState(0); // DM総未読数
+  const [dmTotalUnread, setDmTotalUnread] = useState(0); // DM総未読数
 
   const fileInputRef = useRef(null);
   const storyInputRef = useRef(null);
@@ -90,21 +90,22 @@ export default function App() {
       fetchMyProfile(user.id);
       fetchData();
       fetchNotifications();
-      fetchDMStats(); // DM未読数の取得
+      fetchDmTotalUnread(); // DM未読数の取得
 
-      const channel = supabase
+      // 通知の購読
+      const notifChannel = supabase
         .channel(`public:notifications:receiver_id=eq.${user.id}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `receiver_id=eq.${user.id}` }, () => fetchNotifications())
         .subscribe();
-      
-      // DMの未読数をリアルタイム更新するための購読
+
+      // DMの未読監視（総数）
       const dmChannel = supabase
         .channel(`public:messages:receiver_id=eq.${user.id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` }, () => fetchDMStats())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` }, () => fetchDmTotalUnread())
         .subscribe();
 
       return () => { 
-        supabase.removeChannel(channel); 
+        supabase.removeChannel(notifChannel); 
         supabase.removeChannel(dmChannel);
       };
     }
@@ -167,14 +168,10 @@ export default function App() {
     if (data) { setNotifications(data); setUnreadCount(data.filter(n => !n.is_read).length); }
   }
 
-  // DMの未読総数を取得
-  async function fetchDMStats() {
+  async function fetchDmTotalUnread() {
     if (!user) return;
-    const { count } = await supabase.from('messages')
-      .select('*', { count: 'exact', head: true })
-      .eq('receiver_id', user.id)
-      .eq('is_read', false);
-    setDmUnreadTotal(count || 0);
+    const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true }).eq('receiver_id', user.id).eq('is_read', false);
+    setDmTotalUnread(count || 0);
   }
 
   async function sendNotification(receiverId, type, postId = null, storyId = null) {
@@ -309,10 +306,7 @@ export default function App() {
 
       {creatingStory && <StoryCreator file={creatingStory} onClose={() => setCreatingStory(false)} onPublish={handleStoryPublish} myProfile={myProfile} getAvatar={getAvatar} />}
       {viewingStory && <StoryViewer stories={groupedStories[viewingStory.userId]} initialIndex={viewingStory.index} onClose={() => setViewingStory(null)} userProfile={allProfiles.find(p => p.id === viewingStory.userId)} getAvatar={getAvatar} currentUserId={user.id} onDelete={handleDeleteStory} sendNotification={sendNotification} />}
-      
-      {/* openProfileをDMScreenに渡す */}
       {dmTarget && <DMScreen target={dmTarget} setDmTarget={setDmTarget} currentUser={user} getAvatar={getAvatar} darkMode={darkMode} uploadToCloudinary={uploadToCloudinary} openProfile={openProfile} />}
-      
       {showFollowList && <FollowListModal type={showFollowList} userId={activeProfileId} onClose={() => setShowFollowList(null)} openProfile={openProfile} getAvatar={getAvatar} darkMode={darkMode} />}
       {selectedPost && <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} getAvatar={getAvatar} openProfile={openProfile} onDelete={handleDeletePost} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} refreshPosts={fetchData} sendNotification={sendNotification} />}
       {showSettings && <SettingsScreen onClose={() => setShowSettings(false)} user={user} myProfile={myProfile} darkMode={darkMode} setDarkMode={setDarkMode} />}
@@ -388,25 +382,17 @@ export default function App() {
             await fetchMyProfile(user.id); setIsEditing(false); setUploading(false);
           }} uploading={uploading} avatarInputRef={avatarInputRef} headerInputRef={headerInputRef} getAvatar={getAvatar} openProfile={openProfile} toggleFollow={toggleFollow} stats={stats} setShowFollowList={setShowFollowList} setShowSettings={setShowSettings} darkMode={darkMode} setView={setView} toggleLike={toggleLike} handleShare={handleShare} setSelectedPost={setSelectedPost} onDeletePost={handleDeletePost} />}
       {view === 'search' && <SearchView posts={posts} openProfile={openProfile} searchQuery={searchQuery} setSearchQuery={setSearchQuery} setSelectedPost={setSelectedPost} darkMode={darkMode} />}
-      {view === 'news' && (
-        <div className="animate-in fade-in flex flex-col items-center justify-center min-h-[50vh] text-center p-8">
-            <div className={`p-6 rounded-full mb-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
-                <Newspaper size={48} className="text-gray-400" />
-            </div>
-            <h2 className="text-xl font-black uppercase tracking-widest mb-2">News Feed</h2>
-            <p className="text-gray-500 text-sm font-medium">最新のニュースやトレンドをここでお届けします。<br/>(Coming Soon)</p>
-        </div>
-      )}
       {view === 'messages' && <MessagesList allProfiles={allProfiles} user={user} setDmTarget={setDmTarget} getAvatar={getAvatar} openProfile={openProfile} darkMode={darkMode} />}
       {view === 'notifications' && <NotificationCenter notifications={notifications} getAvatar={getAvatar} openProfile={openProfile} setSelectedPost={(postId) => { const p = posts.find(x => x.id === postId); if(p) setSelectedPost(p); }} darkMode={darkMode} />}
+      {view === 'news' && <div className="h-full flex items-center justify-center p-10 text-center"><div className="space-y-4"><Newspaper size={48} className="mx-auto text-gray-400" /><h2 className="text-2xl font-black">NEWS</h2><p className="text-gray-500 text-sm">最新のニュース機能は現在準備中です。</p></div></div>}
 
       <nav className={`fixed bottom-0 max-w-md w-full border-t flex justify-around py-4 z-40 shadow-sm ${darkMode ? 'bg-black/95 border-gray-800 text-gray-600' : 'bg-white/95 border-gray-100 text-gray-300'}`}>
         <HomeIcon onClick={() => setView('home')} className={`cursor-pointer transition hover:scale-110 ${view === 'home' ? 'text-blue-600' : ''}`} />
         <Newspaper onClick={() => setView('news')} className={`cursor-pointer transition hover:scale-110 ${view === 'news' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
         <Search onClick={() => setView('search')} className={`cursor-pointer transition hover:scale-110 ${view === 'search' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
-        <div className="relative" onClick={() => setView('messages')}>
-            <MessageCircle className={`cursor-pointer transition hover:scale-110 ${view === 'messages' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
-            {dmUnreadTotal > 0 && <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full font-bold shadow-sm">{dmUnreadTotal}</span>}
+        <div className="relative cursor-pointer transition hover:scale-110" onClick={() => setView('messages')}>
+           <MessageCircle className={`${view === 'messages' ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
+           {dmTotalUnread > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] min-w-[16px] h-4 flex items-center justify-center rounded-full font-bold px-1">{dmTotalUnread}</span>}
         </div>
         <UserIcon onClick={() => openProfile(user.id)} className={`cursor-pointer transition hover:scale-110 ${view === 'profile' && activeProfileId === user.id ? (darkMode ? 'text-white' : 'text-black') : ''}`} />
       </nav>
@@ -419,86 +405,88 @@ export default function App() {
 function MessagesList({ allProfiles, user, setDmTarget, getAvatar, openProfile, darkMode }) {
   const [lastMessages, setLastMessages] = useState({});
   const [unreadCounts, setUnreadCounts] = useState({});
-  const [showListSettings, setShowListSettings] = useState(false); // リスト設定用
+  const [showListSettings, setShowListSettings] = useState(false);
 
   useEffect(() => {
-    fetchMessagesInfo();
-    const sub = supabase.channel('dm_list_updates')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchMessagesInfo())
-        .subscribe();
-    return () => supabase.removeChannel(sub);
+    fetchLastMessages();
+    fetchUnreadCounts();
+    const channel = supabase.channel('message_list_updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
+        fetchLastMessages();
+        fetchUnreadCounts();
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
   }, [allProfiles]);
 
-  async function fetchMessagesInfo() {
-    // 最終メッセージと未読数を取得
+  async function fetchLastMessages() {
     const { data } = await supabase.from('messages').select('*').or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`).order('created_at', { ascending: false });
     if (data) {
       const latest = {};
-      const counts = {};
-      
       data.forEach(m => {
         const otherId = m.sender_id === user.id ? m.receiver_id : m.sender_id;
-        
-        // 最新メッセージ
         if (!latest[otherId]) latest[otherId] = m;
-
-        // 未読数カウント (自分が受信者で未読のもの)
-        if (m.receiver_id === user.id && !m.is_read) {
-            counts[otherId] = (counts[otherId] || 0) + 1;
-        }
       });
       setLastMessages(latest);
+    }
+  }
+
+  async function fetchUnreadCounts() {
+    const { data } = await supabase.from('messages').select('sender_id').eq('receiver_id', user.id).eq('is_read', false);
+    if (data) {
+      const counts = {};
+      data.forEach(m => {
+        counts[m.sender_id] = (counts[m.sender_id] || 0) + 1;
+      });
       setUnreadCounts(counts);
     }
   }
 
+  async function markAllAsRead() {
+    if(!window.confirm("すべてのメッセージを既読にしますか？")) return;
+    await supabase.from('messages').update({ is_read: true }).eq('receiver_id', user.id);
+    setShowListSettings(false);
+  }
+
   return (
-    <div className="animate-in fade-in h-full flex flex-col relative">
+    <div className="animate-in fade-in h-full flex flex-col relative" onClick={() => setShowListSettings(false)}>
       <header className={`p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 backdrop-blur-md flex justify-between items-center ${darkMode ? 'bg-black/90' : 'bg-white/90'}`}>
         <div className="w-8"></div>
         <span>Messages</span>
-        <button onClick={() => setShowListSettings(!showListSettings)} className="relative">
-            <Settings size={20} className="text-gray-400" />
-        </button>
+        <div className="relative">
+          <Settings size={20} className="text-gray-400 cursor-pointer hover:text-white transition" onClick={(e) => { e.stopPropagation(); setShowListSettings(!showListSettings); }} />
+          {showListSettings && (
+            <div className={`absolute right-0 top-8 w-48 rounded-xl shadow-2xl py-2 z-50 ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-white border border-gray-100'}`}>
+              <button onClick={markAllAsRead} className="w-full text-left px-4 py-2 hover:bg-gray-800 flex items-center gap-2 text-sm font-bold">
+                <Check size={16} /> すべて既読にする
+              </button>
+            </div>
+          )}
+        </div>
       </header>
-
-      {/* DM設定モーダル（簡易版） */}
-      {showListSettings && (
-          <div className={`absolute top-14 right-4 w-48 rounded-xl shadow-xl z-20 border ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
-              <div className="p-2">
-                  <h4 className="px-3 py-2 text-xs font-black text-gray-500 uppercase">List Settings</h4>
-                  <button className={`w-full text-left px-3 py-2 text-sm font-medium rounded-lg ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`} onClick={() => alert("メッセージリクエスト機能 (Coming Soon)")}>メッセージリクエスト</button>
-                  <button className={`w-full text-left px-3 py-2 text-sm font-medium rounded-lg text-red-500 ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`} onClick={() => alert("一括既読機能 (Coming Soon)")}>すべて既読にする</button>
-              </div>
-          </div>
-      )}
-      {showListSettings && <div className="fixed inset-0 z-10" onClick={() => setShowListSettings(false)} />}
-
       <div className="flex-grow overflow-y-auto">
         {allProfiles.filter(p => p.id !== user?.id).map(u => (
           <div key={u.id} className={`flex items-center gap-4 p-4 cursor-pointer transition ${darkMode ? 'hover:bg-gray-900 border-b border-gray-800/50' : 'hover:bg-gray-50 border-b border-gray-100'}`} onClick={() => setDmTarget(u)}>
             <div className="relative">
               <img src={getAvatar(u.username, u.avatar_url)} className="w-14 h-14 rounded-full object-cover shadow-sm" />
-              {/* 未読数がある場合はバッジを表示、なければオンラインランプ的な緑ポチ */}
-              {unreadCounts[u.id] > 0 ? (
-                  <div className="absolute top-0 right-0 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold border-2 border-black">
-                      {unreadCounts[u.id]}
-                  </div>
-              ) : (
-                  <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-black rounded-full"></div>
-              )}
+              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-black rounded-full"></div>
             </div>
             <div className="flex-grow pb-1">
               <div className="flex justify-between items-center mb-1">
-                <p className={`font-black text-sm ${unreadCounts[u.id] > 0 ? (darkMode ? 'text-white' : 'text-black') : 'text-gray-500'}`}>{u.display_name}</p>
-                {lastMessages[u.id] && <p className={`text-[10px] font-bold ${unreadCounts[u.id] > 0 ? 'text-blue-500' : 'text-gray-500'}`}>{formatTime(lastMessages[u.id].created_at)}</p>}
+                <p className="font-black text-sm">{u.display_name}</p>
+                {lastMessages[u.id] && <p className="text-[10px] text-gray-500 font-bold">{formatTime(lastMessages[u.id].created_at)}</p>}
               </div>
               <div className="flex items-center justify-between">
-                <p className={`text-xs truncate max-w-[180px] ${unreadCounts[u.id] > 0 ? 'text-white font-bold' : 'text-gray-400'}`}>
+                <p className={`text-xs truncate max-w-[180px] ${unreadCounts[u.id] ? 'font-black text-white' : 'text-gray-400'}`}>
                   {lastMessages[u.id] ? (lastMessages[u.id].image_url ? '📷 写真を送信しました' : lastMessages[u.id].text) : 'メッセージを送ってみましょう'}
                 </p>
-                {lastMessages[u.id] && lastMessages[u.id].sender_id !== user.id && !lastMessages[u.id].is_read && (
-                  <div className="w-2.5 h-2.5 bg-blue-600 rounded-full"></div>
+                {unreadCounts[u.id] > 0 && (
+                  <div className="w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-[10px] font-black shadow-lg">
+                    {unreadCounts[u.id]}
+                  </div>
+                )}
+                {lastMessages[u.id] && lastMessages[u.id].sender_id === user.id && lastMessages[u.id].is_read && (
+                  <span className="text-[10px] text-gray-500 font-bold">既読</span>
                 )}
               </div>
             </div>
@@ -515,8 +503,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
-  const [showChatSettings, setShowChatSettings] = useState(false); // DM設定用
-
+  const [showSettings, setShowSettings] = useState(false);
   const scrollRef = useRef();
   const dmFileInputRef = useRef();
 
@@ -602,50 +589,46 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
     await supabase.from('messages').delete().eq('id', msgId).eq('sender_id', currentUser.id);
   }
 
-  const handleProfileClick = () => {
-    // プロフィールを開き、DM画面を閉じる
-    openProfile(target.id);
+  async function handleDeleteChat() {
+    if (!window.confirm("このチャットを削除してもよろしいですか？")) return;
+    // 自分側のメッセージだけを非表示にする等の機能が必要ですが、
+    // 簡易的に双方のメッセージを削除する実装とします（実際はフラグ管理が望ましい）
+    await supabase.from('messages').delete()
+      .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${currentUser.id})`);
     setDmTarget(null);
-  };
+  }
 
   return (
-    <div className={`fixed inset-0 z-[120] flex flex-col animate-in slide-in-from-right duration-300 ${darkMode ? 'bg-black' : 'bg-[#f0f2f5]'}`}>
+    <div className={`fixed inset-0 z-[120] flex flex-col animate-in slide-in-from-right duration-300 ${darkMode ? 'bg-black' : 'bg-[#f0f2f5]'}`} onClick={() => setShowSettings(false)}>
       <header className={`p-4 flex items-center justify-between border-b sticky top-0 z-10 ${darkMode ? 'bg-black border-gray-800' : 'bg-white'}`}>
-        <div className="flex items-center gap-3">
-          <ChevronLeft onClick={() => setDmTarget(null)} className="cursor-pointer" />
-          <div className="flex items-center gap-3 cursor-pointer" onClick={handleProfileClick}>
-            <img src={getAvatar(target.username, target.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
-            <div>
-                <p className="font-black text-sm hover:underline">{target.display_name}</p>
-                <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">online</p>
-            </div>
+        <div className="flex items-center gap-3 cursor-pointer" onClick={(e) => { e.stopPropagation(); setDmTarget(null); openProfile(target.id); }}>
+          <ChevronLeft onClick={(e) => { e.stopPropagation(); setDmTarget(null); }} className="cursor-pointer" />
+          <img src={getAvatar(target.username, target.avatar_url)} className="w-10 h-10 rounded-full object-cover" />
+          <div>
+            <p className="font-black text-sm">{target.display_name}</p>
+            <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">online</p>
           </div>
         </div>
         <div className="relative">
-          <button onClick={() => setShowChatSettings(!showChatSettings)} className="text-gray-400 p-2">
-            <MoreVertical size={20} />
-          </button>
-          
-          {/* チャット設定モーダル */}
-          {showChatSettings && (
-             <div className={`absolute top-full right-0 mt-2 w-48 rounded-xl shadow-xl z-20 border ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'}`}>
-                 <div className="p-2">
-                     <h4 className="px-3 py-2 text-xs font-black text-gray-500 uppercase">Chat Settings</h4>
-                     <button className={`w-full text-left px-3 py-2 text-sm font-medium rounded-lg text-red-500 ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`} onClick={() => alert("ブロック機能 (Coming Soon)")}>ブロック</button>
-                     <button className={`w-full text-left px-3 py-2 text-sm font-medium rounded-lg text-red-500 ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`} onClick={() => alert("チャット削除機能 (Coming Soon)")}>チャットを削除</button>
-                 </div>
-             </div>
+          <MoreVertical size={20} className="text-gray-400 cursor-pointer" onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} />
+          {showSettings && (
+            <div className={`absolute right-0 top-8 w-48 rounded-xl shadow-2xl py-2 z-50 ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-white border border-gray-100'}`}>
+              <button className="w-full text-left px-4 py-2 hover:bg-gray-800 flex items-center gap-2 text-sm font-bold text-gray-400"><VolumeX size={16}/> ミュート</button>
+              <button className="w-full text-left px-4 py-2 hover:bg-gray-800 flex items-center gap-2 text-sm font-bold text-gray-400"><Ban size={16}/> ブロック</button>
+              <button className="w-full text-left px-4 py-2 hover:bg-gray-800 flex items-center gap-2 text-sm font-bold text-gray-400"><Flag size={16}/> 通報する</button>
+              <div className="border-t border-gray-700 my-1"></div>
+              <button onClick={handleDeleteChat} className="w-full text-left px-4 py-2 hover:bg-gray-800 flex items-center gap-2 text-sm font-bold text-red-500"><Trash2 size={16}/> チャットを削除</button>
+            </div>
           )}
-          {showChatSettings && <div className="fixed inset-0 z-10" onClick={() => setShowChatSettings(false)} />}
         </div>
       </header>
 
       <div className="flex-grow overflow-y-auto p-4 space-y-6 scrollbar-hide">
         <div className="text-center py-10">
-          <img src={getAvatar(target.username, target.avatar_url)} className="w-20 h-20 rounded-full mx-auto mb-2 border-2 border-blue-500 p-1 cursor-pointer" onClick={handleProfileClick} />
-          <h3 className="font-black text-lg cursor-pointer hover:underline" onClick={handleProfileClick}>{target.display_name}</h3>
+          <img src={getAvatar(target.username, target.avatar_url)} className="w-20 h-20 rounded-full mx-auto mb-2 border-2 border-blue-500 p-1" />
+          <h3 className="font-black text-lg">{target.display_name}</h3>
           <p className="text-xs text-gray-500">@{target.username} • GridStream</p>
-          <button onClick={handleProfileClick} className={`mt-4 px-4 py-1.5 rounded-full text-[10px] font-black uppercase border ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>View Profile</button>
+          <button className={`mt-4 px-4 py-1.5 rounded-full text-[10px] font-black uppercase border ${darkMode ? 'border-gray-800' : 'border-gray-200'}`} onClick={() => { setDmTarget(null); openProfile(target.id); }}>View Profile</button>
         </div>
 
         {messages.map(m => (
@@ -662,10 +645,8 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
                 {m.image_url && <img src={m.image_url} className="rounded-xl mb-2 max-w-full cursor-zoom-in" alt="sent" />}
                 {m.text && <p className="font-medium leading-relaxed break-words">{m.text}</p>}
               </div>
-              <div className="flex flex-col items-center min-w-[30px]">
-                 {m.sender_id === currentUser.id && m.is_read && (
-                    <span className="text-[9px] text-gray-400 font-bold mb-0.5">Read</span>
-                 )}
+              <div className="flex flex-col items-center">
+                 {m.sender_id === currentUser.id && m.is_read && <span className="text-[9px] text-gray-500 font-bold mb-0.5">既読</span>}
                  <span className="text-[9px] text-gray-500 font-bold mb-1">{formatTime(m.created_at)}</span>
               </div>
             </div>
@@ -971,4 +952,4 @@ function AuthScreen({ fetchData }) {
   async function handleAuth(e) { if (e) e.preventDefault(); setLoading(true); try { if (isLogin) { const { error } = await supabase.auth.signInWithPassword({ email, password }); if (error) throw error; } else { const { data, error } = await supabase.auth.signUp({ email, password }); if (error) throw error; if (data?.user) { const { error: profileError } = await supabase.from('profiles').upsert([{ id: data.user.id, username: username.toLowerCase(), display_name: displayName }]); if (profileError) throw profileError; } } fetchData(); } catch (err) { alert(err.message); } finally { setLoading(false); } }
   if (isLogin) return (<div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black"><script src="https://cdn.tailwindcss.com"></script><div className="w-20 h-20 bg-gradient-to-tr from-blue-700 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-pulse"><Zap size={40} color="white" fill="white" /></div><h1 className="text-4xl font-black mb-10 text-blue-700 italic uppercase">GridStream</h1><form onSubmit={handleAuth} className="w-full max-w-xs space-y-4"><input type="email" placeholder="EMAIL" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={email} onChange={(e) => setEmail(e.target.value)} required /><input type="password" placeholder="PASSWORD" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={password} onChange={(e) => setPassword(e.target.value)} required /><button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">{loading ? "..." : "Login"}</button></form><button onClick={() => { setIsLogin(false); setStep(1); }} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">Create Account</button></div>);
   return (<div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black"><script src="https://cdn.tailwindcss.com"></script><div className="w-full max-w-xs flex items-center mb-8"><button onClick={() => step > 1 ? setStep(step - 1) : setIsLogin(true)} className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition"><ChevronLeft size={24} /></button><div className="flex-grow text-center mr-6"><span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Step {step} of 4</span></div></div><h2 className="text-2xl font-black mb-2 italic uppercase">JOIN GRIDSTREAM</h2><form onSubmit={(e) => { e.preventDefault(); if (step < 4) setStep(step + 1); else handleAuth(); }} className="w-full max-w-xs space-y-6">{step === 1 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Email Address</label><input type="email" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>)}{step === 2 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Create Password</label><input type="password" placeholder="••••••••" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} /></div>)}{step === 3 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Username</label><input type="text" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={username} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} required minLength={4} /></div>)}{step === 4 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Display Name</label><input type="text" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required /></div>)}<button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">{loading ? "..." : (step === 4 ? "Complete Sign Up" : "Next")}</button></form></div>);
-        }
+}
