@@ -4,7 +4,7 @@ import {
   Camera, MessageCircle, Heart, Share2, Search, Home as HomeIcon, X, 
   User as UserIcon, ImageIcon, Send, ChevronLeft, Zap, LogOut, Settings, 
   Trash2, MessageSquare, Plus, Type, Check, Palette, Maximize2,
-  UserPlus, UserMinus, Bell, MoreVertical, Image as ImageIconLucide, Users, Hash, Shield, Globe, Lock
+  UserPlus, UserMinus, Bell, BellOff, MoreVertical, Image as ImageIconLucide, Users, Hash, Shield, Globe, Lock
 } from 'lucide-react';
 
 // --- 定数・ユーティリティ ---
@@ -32,6 +32,7 @@ const renderContent = (text) => {
   
   const parts = text.split(/((?:https?:\/\/[^\s]+)|(?:#[^\s!@#$%^&*()=+.\/,\[\]{\}]+\b))/g);
   return parts.map((part, i) => {
+    if (!part) return null;
     if (part.match(urlRegex)) {
       return (
         <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline break-all" onClick={(e) => e.stopPropagation()}>
@@ -47,10 +48,10 @@ const renderContent = (text) => {
 };
 
 const FONT_STYLES = [
-  { name: 'Classic', css: 'font-serif', label: 'Classic' },
-  { name: 'Modern', css: 'font-sans font-black uppercase tracking-widest', label: 'Modern' },
-  { name: 'Typewriter', css: 'font-mono', label: 'Typewriter' },
-  { name: 'Neon', css: 'font-cursive italic', label: 'Neon' },
+  { name: 'クラシック', css: 'font-serif', label: 'Classic' },
+  { name: 'モダン', css: 'font-sans font-black uppercase tracking-widest', label: 'Modern' },
+  { name: 'タイプライター', css: 'font-mono', label: 'Typewriter' },
+  { name: 'ネオン', css: 'font-cursive italic', label: 'Neon' },
 ];
 const TEXT_COLORS = ['#FFFFFF', '#000000', '#FF3B30', '#FF9500', '#FFCC00', '#4CD964', '#5AC8FA', '#007AFF', '#5856D6', '#FF2D55'];
 
@@ -77,8 +78,8 @@ export default function App() {
   const [selectedPost, setSelectedPost] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [dmTarget, setDmTarget] = useState(null);
-  const [groupTarget, setGroupTarget] = useState(null); // 追加: グループDM
-  const [showCreateGroup, setShowCreateGroup] = useState(false); // 追加: グループ作成
+  const [groupTarget, setGroupTarget] = useState(null); 
+  const [showCreateGroup, setShowCreateGroup] = useState(false); 
   
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -104,7 +105,7 @@ export default function App() {
       fetchMyProfile(user.id);
       fetchData();
       fetchNotifications();
-      const interval = setInterval(updateLastSeen, 60000); // 1分おきに更新
+      const interval = setInterval(updateLastSeen, 60000); 
 
       const channel = supabase
         .channel(`public:notifications:receiver_id=eq.${user.id}`)
@@ -181,6 +182,7 @@ export default function App() {
 
   async function sendNotification(receiverId, type, postId = null, storyId = null) {
     if (!user || user.id === receiverId) return;
+    // ミュートチェックをここに入れることも可能
     await supabase.from('notifications').insert([{ sender_id: user.id, receiver_id: receiverId, type: type, post_id: postId, story_id: storyId, is_read: false }]);
   }
 
@@ -266,7 +268,6 @@ export default function App() {
     const { data, error } = await supabase.from('posts').insert([{ content: newPost, user_id: user.id, image_url: imageUrl }]).select().single();
     
     if (data) {
-      // ハッシュタグの抽出と保存
       const tags = newPost.match(/#[^\s!@#$%^&*()=+.\/,\[\]{\}]+\b/g);
       if (tags) {
         for (const t of tags) {
@@ -356,7 +357,7 @@ export default function App() {
                   <Plus size={12} className="text-white" />
                 </div>
               </div>
-              <span className="text-[10px] font-bold text-gray-400">Your Story</span>
+              <span className="text-[10px] font-bold text-gray-400">あなたのストーリー</span>
               <input type="file" accept="image/*" ref={storyInputRef} className="hidden" onChange={handleStoryFileSelect} />
             </div>
             {Object.keys(groupedStories).filter(id => id !== user.id).map(userId => {
@@ -376,12 +377,12 @@ export default function App() {
           <form onSubmit={handlePost} className={`p-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
             <div className="flex gap-3">
               <img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-10 h-10 rounded-full object-cover cursor-pointer" onClick={() => openProfile(user.id)} />
-              <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent font-medium" placeholder="What's happening? #Beta" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
+              <textarea className="flex-grow border-none focus:ring-0 text-lg placeholder-gray-400 resize-none h-16 outline-none bg-transparent font-medium" placeholder="今なにしてる？ #Beta" value={newPost} onChange={(e) => setNewPost(e.target.value)} />
             </div>
             <div className="flex justify-between items-center pl-12 mt-2">
               <label className="cursor-pointer text-blue-500 p-2 rounded-full transition"><ImageIcon size={22}/><input type="file" accept="image/*" ref={fileInputRef} className="hidden" /></label>
               <button type="submit" disabled={uploading || !newPost.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-full font-black text-xs uppercase tracking-tighter">
-                {uploading ? '...' : 'Stream'}
+                {uploading ? '送信中...' : 'ストリーム'}
               </button>
             </div>
           </form>
@@ -416,8 +417,7 @@ export default function App() {
   );
 }
 
-// --- DM機能 アップデート版 ---
-
+// --- DMリスト ---
 function MessagesList({ allProfiles, user, setDmTarget, setGroupTarget, setShowCreateGroup, getAvatar, openProfile, darkMode }) {
   const [lastMessages, setLastMessages] = useState({});
   const [mutualFollows, setMutualFollows] = useState([]);
@@ -430,7 +430,6 @@ function MessagesList({ allProfiles, user, setDmTarget, setGroupTarget, setShowC
   }, [allProfiles]);
 
   async function fetchMutualFollows() {
-    // 相互フォローの抽出
     const { data: following } = await supabase.from('follows').select('following_id').eq('follower_id', user.id);
     const { data: followers } = await supabase.from('follows').select('follower_id').eq('following_id', user.id);
     
@@ -463,14 +462,12 @@ function MessagesList({ allProfiles, user, setDmTarget, setGroupTarget, setShowC
     <div className="animate-in fade-in h-full flex flex-col">
       <header className={`p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 backdrop-blur-md flex justify-between items-center ${darkMode ? 'bg-black/90' : 'bg-white/90'}`}>
         <div className="w-8"></div>
-        <span>Messages</span>
+        <span>メッセージ</span>
         <div className="flex gap-3">
           <Users size={20} className="text-blue-500 cursor-pointer" onClick={() => setShowCreateGroup(true)} />
-          <Settings size={20} className="text-gray-400" />
         </div>
       </header>
       <div className="flex-grow overflow-y-auto">
-        {/* グループリスト */}
         {groups.map(g => (
           <div key={g.id} className={`flex items-center gap-4 p-4 cursor-pointer transition ${darkMode ? 'hover:bg-gray-900 border-b border-gray-800/50' : 'hover:bg-gray-50 border-b border-gray-100'}`} onClick={() => setGroupTarget(g)}>
             <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white font-black shadow-lg">
@@ -478,7 +475,7 @@ function MessagesList({ allProfiles, user, setDmTarget, setGroupTarget, setShowC
             </div>
             <div className="flex-grow">
               <div className="flex justify-between items-center mb-1">
-                <p className="font-black text-sm">{g.name} (Group)</p>
+                <p className="font-black text-sm">{g.name} (グループ)</p>
                 {lastMessages[`group:${g.id}`] && <p className="text-[10px] text-gray-500 font-bold">{formatTime(lastMessages[`group:${g.id}`].created_at)}</p>}
               </div>
               <p className="text-xs text-gray-400 truncate max-w-[180px]">
@@ -488,7 +485,6 @@ function MessagesList({ allProfiles, user, setDmTarget, setGroupTarget, setShowC
           </div>
         ))}
 
-        {/* 相互フォローDMリスト */}
         {mutualFollows.map(u => (
           <div key={u.id} className={`flex items-center gap-4 p-4 cursor-pointer transition ${darkMode ? 'hover:bg-gray-900 border-b border-gray-800/50' : 'hover:bg-gray-50 border-b border-gray-100'}`} onClick={() => setDmTarget(u)}>
             <div className="relative">
@@ -512,13 +508,14 @@ function MessagesList({ allProfiles, user, setDmTarget, setGroupTarget, setShowC
           </div>
         ))}
         {mutualFollows.length === 0 && groups.length === 0 && (
-          <div className="p-20 text-center text-gray-500 font-bold text-xs uppercase tracking-widest">相互フォローのユーザーがいません</div>
+          <div className="p-20 text-center text-gray-500 font-bold text-xs uppercase tracking-widest">メッセージ可能なユーザーがいません</div>
         )}
       </div>
     </div>
   );
 }
 
+// --- DM個別画面 ---
 function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploadToCloudinary }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
@@ -604,7 +601,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
   }
 
   async function deleteMsg(msgId) {
-    if(!window.confirm("送信を取り消しますか？")) return;
+    if(!window.confirm("このメッセージの送信を取り消しますか？")) return;
     await supabase.from('messages').delete().eq('id', msgId).eq('sender_id', currentUser.id);
   }
 
@@ -619,7 +616,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
           </div>
           <div>
             <p className="font-black text-sm">{target.display_name}</p>
-            <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">{isOnline(target.last_seen_at) ? 'Active now' : 'Offline'}</p>
+            <p className="text-[10px] text-green-500 font-bold uppercase tracking-widest">{isOnline(target.last_seen_at) ? 'Online' : 'オフライン'}</p>
           </div>
         </div>
         <div className="flex gap-4 text-gray-400">
@@ -627,20 +624,24 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
         </div>
       </header>
 
-      {showSettings && <DMSettingsModal onClose={() => setShowSettings(false)} target={target} darkMode={darkMode} />}
+      {showSettings && <DMSettingsModal onClose={() => setShowSettings(false)} target={target} currentUser={currentUser} onHistoryCleared={() => setMessages([])} onChatClosed={() => setDmTarget(null)} darkMode={darkMode} />}
 
       <div className="flex-grow overflow-y-auto p-4 space-y-6 scrollbar-hide">
         {messages.map(m => (
           <div key={m.id} className={`flex flex-col ${m.sender_id === currentUser.id ? 'items-end' : 'items-start'}`}>
             <div className={`group relative max-w-[80%] flex items-end gap-2 ${m.sender_id === currentUser.id ? 'flex-row-reverse' : 'flex-row'}`}>
               <div 
-                className={`p-4 rounded-[1.8rem] text-sm shadow-sm transition-all ${
+                className={`p-4 rounded-[1.8rem] text-sm shadow-sm transition-all relative ${
                   m.sender_id === currentUser.id 
                     ? 'bg-blue-600 text-white rounded-tr-none' 
                     : (darkMode ? 'bg-gray-800 text-white rounded-tl-none' : 'bg-white text-gray-800 rounded-tl-none')
                 }`}
-                onDoubleClick={() => m.sender_id === currentUser.id && deleteMsg(m.id)}
               >
+                {m.sender_id === currentUser.id && (
+                  <button onClick={() => deleteMsg(m.id)} className="absolute -top-2 -left-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition shadow-lg">
+                    <X size={10} />
+                  </button>
+                )}
                 {m.image_url && <img src={m.image_url} className="rounded-xl mb-2 max-w-full cursor-zoom-in" alt="sent" />}
                 {m.text && <div className="font-medium leading-relaxed break-words">{renderContent(m.text)}</div>}
               </div>
@@ -672,7 +673,7 @@ function DMScreen({ target, setDmTarget, currentUser, getAvatar, darkMode, uploa
             <input 
               type="text" 
               className="flex-grow bg-transparent outline-none text-sm font-medium py-1" 
-              placeholder="メッセージを入力..." 
+              placeholder="メッセージ..." 
               value={text} 
               onChange={(e) => setText(e.target.value)} 
             />
@@ -739,7 +740,7 @@ function GroupChatScreen({ target, setGroupTarget, currentUser, getAvatar, darkM
         <div ref={scrollRef} />
       </div>
       <form onSubmit={sendMsg} className="p-4 flex gap-2 border-t">
-        <input className={`flex-grow p-3 rounded-full outline-none ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`} value={text} onChange={e => setText(e.target.value)} placeholder="Group message..." />
+        <input className={`flex-grow p-3 rounded-full outline-none ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`} value={text} onChange={e => setText(e.target.value)} placeholder="グループにメッセージ..." />
         <button className="bg-blue-600 text-white p-3 rounded-full"><Send size={20}/></button>
       </form>
     </div>
@@ -765,9 +766,9 @@ function CreateGroupModal({ onClose, currentUser, allProfiles, setGroupTarget, g
   return (
     <div className="fixed inset-0 z-[150] bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
       <div className={`w-full max-w-sm rounded-3xl p-6 ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
-        <h3 className="font-black mb-4">Create Group</h3>
-        <input placeholder="Group Name" className={`w-full p-3 rounded-xl mb-4 outline-none ${darkMode ? 'bg-black' : 'bg-gray-100'}`} value={name} onChange={e => setName(e.target.value)} />
-        <p className="text-[10px] font-black text-gray-500 uppercase mb-2">Select Members</p>
+        <h3 className="font-black mb-4">グループ作成</h3>
+        <input placeholder="グループ名" className={`w-full p-3 rounded-xl mb-4 outline-none ${darkMode ? 'bg-black' : 'bg-gray-100'}`} value={name} onChange={e => setName(e.target.value)} />
+        <p className="text-[10px] font-black text-gray-500 uppercase mb-2">メンバーを選択</p>
         <div className="max-h-60 overflow-y-auto space-y-2 mb-6">
           {allProfiles.filter(p => p.id !== currentUser.id).map(u => (
             <div key={u.id} className={`flex items-center gap-3 p-2 rounded-xl cursor-pointer ${selected.includes(u.id) ? 'bg-blue-600/20 border border-blue-500' : ''}`} onClick={() => setSelected(prev => prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id])}>
@@ -777,36 +778,83 @@ function CreateGroupModal({ onClose, currentUser, allProfiles, setGroupTarget, g
           ))}
         </div>
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-grow py-3 rounded-xl font-bold bg-gray-500/20">Cancel</button>
-          <button onClick={handleCreate} className="flex-grow py-3 rounded-xl font-bold bg-blue-600 text-white">Create</button>
+          <button onClick={onClose} className="flex-grow py-3 rounded-xl font-bold bg-gray-500/20">キャンセル</button>
+          <button onClick={handleCreate} className="flex-grow py-3 rounded-xl font-bold bg-blue-600 text-white">作成</button>
         </div>
       </div>
     </div>
   );
 }
 
-// --- DM設定画面 ---
-function DMSettingsModal({ onClose, target, darkMode }) {
+// --- DM設定画面 (機能強化版) ---
+function DMSettingsModal({ onClose, target, currentUser, onHistoryCleared, onChatClosed, darkMode }) {
+  const [isMuted, setIsMuted] = useState(false);
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  async function fetchSettings() {
+    const { data } = await supabase.from('dm_settings').select('is_muted').eq('user_id', currentUser.id).eq('target_id', target.id).maybeSingle();
+    if (data) setIsMuted(data.is_muted);
+  }
+
+  async function toggleMute() {
+    const nextValue = !isMuted;
+    setIsMuted(nextValue);
+    await supabase.from('dm_settings').upsert({ user_id: currentUser.id, target_id: target.id, is_muted: nextValue });
+  }
+
+  async function handleBlock() {
+    if(!window.confirm(`${target.display_name}さんをブロックしますか？`)) return;
+    await supabase.from('blocks').insert({ blocker_id: currentUser.id, blocked_id: target.id });
+    alert("ブロックしました。");
+    onChatClosed();
+  }
+
+  async function handleClearHistory() {
+    if(!window.confirm("これまでのメッセージ履歴をすべて削除しますか？")) return;
+    await supabase.from('messages')
+      .delete()
+      .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${target.id}),and(sender_id.eq.${target.id},receiver_id.eq.${currentUser.id})`);
+    onHistoryCleared();
+    onClose();
+  }
+
   return (
     <div className={`fixed inset-0 z-[130] animate-in slide-in-from-bottom duration-300 ${darkMode ? 'bg-black' : 'bg-white'}`}>
       <header className="p-4 border-b flex items-center gap-4">
-        <ChevronLeft onClick={onClose} />
-        <h2 className="font-black uppercase">DM Settings</h2>
+        <ChevronLeft onClick={onClose} className="cursor-pointer" />
+        <h2 className="font-black uppercase tracking-widest">チャット設定</h2>
       </header>
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-8">
         <div className="text-center">
-          <img src={target.avatar_url} className="w-20 h-20 rounded-full mx-auto mb-2" />
-          <p className="font-black">{target.display_name}</p>
+          <img src={getAvatar(target.username, target.avatar_url)} className="w-24 h-24 rounded-full mx-auto mb-3 shadow-lg" />
+          <p className="font-black text-xl">{target.display_name}</p>
+          <p className="text-gray-400 font-bold">@{target.username}</p>
         </div>
-        <section className="space-y-4">
-          <button className={`w-full p-4 rounded-2xl flex items-center gap-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-            <Bell size={20} /> <span className="font-bold">Mute Notifications</span>
+        
+        <section className="space-y-3">
+          <button onClick={toggleMute} className={`w-full p-5 rounded-3xl flex items-center justify-between transition ${darkMode ? 'bg-gray-900 hover:bg-gray-800' : 'bg-gray-50 hover:bg-gray-100'}`}>
+            <div className="flex items-center gap-4 font-bold">
+              {isMuted ? <BellOff size={22} className="text-orange-500" /> : <Bell size={22} className="text-blue-500" />}
+              <span>通知をミュート</span>
+            </div>
+            <div className={`w-12 h-6 rounded-full relative transition-colors ${isMuted ? 'bg-blue-600' : 'bg-gray-400'}`}>
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isMuted ? 'right-1' : 'left-1'}`} />
+            </div>
           </button>
-          <button className={`w-full p-4 rounded-2xl flex items-center gap-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-            <Shield size={20} /> <span className="font-bold">Report / Block</span>
+
+          <button onClick={handleBlock} className={`w-full p-5 rounded-3xl flex items-center gap-4 font-bold transition ${darkMode ? 'bg-gray-900 hover:bg-gray-800' : 'bg-gray-50 hover:bg-gray-100'}`}>
+            <Shield size={22} className="text-red-500" />
+            <span>ブロックする</span>
           </button>
-          <button className={`w-full p-4 rounded-2xl flex items-center gap-4 bg-red-500/10 text-red-500`}>
-            <Trash2 size={20} /> <span className="font-bold">Clear Chat History</span>
+
+          <div className="h-px bg-gray-800/10 my-4" />
+
+          <button onClick={handleClearHistory} className={`w-full p-5 rounded-3xl flex items-center gap-4 font-bold bg-red-500/10 text-red-500 hover:bg-red-500/20 transition`}>
+            <Trash2 size={22} />
+            <span>チャット履歴を消去</span>
           </button>
         </section>
       </div>
@@ -814,19 +862,18 @@ function DMSettingsModal({ onClose, target, darkMode }) {
   );
 }
 
-// --- 検索画面 アップデート版 ---
+// --- 検索画面 ---
 function SearchView({ posts, openProfile, allProfiles, searchQuery, setSearchQuery, setSelectedPost, darkMode }) {
-  const filteredUsers = allProfiles.filter(u => u.username.includes(searchQuery.toLowerCase()) || u.display_name.includes(searchQuery));
+  const filteredUsers = allProfiles.filter(u => u.username.toLowerCase().includes(searchQuery.toLowerCase()) || u.display_name.includes(searchQuery));
   const filteredPosts = posts.filter(p => p.content?.includes(searchQuery));
   const filteredImages = posts.filter(p => p.image_url && p.content?.includes(searchQuery));
-  const hashtags = searchQuery.startsWith('#') ? [searchQuery] : [];
 
   return (
     <div className="animate-in fade-in">
       <div className={`p-4 sticky top-0 z-10 border-b ${darkMode ? 'bg-black/90 border-gray-800' : 'bg-white/95 border-gray-100'}`}>
         <div className="relative">
           <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-          <input type="text" placeholder="Search Beta (posts, #hashtags, users...)" className={`w-full rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-black uppercase ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100'}`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+          <input type="text" placeholder="ユーザー、ハッシュタグ、投稿を検索" className={`w-full rounded-xl py-2 pl-10 pr-4 outline-none text-xs font-black uppercase ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100'}`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
       </div>
 
@@ -838,14 +885,13 @@ function SearchView({ posts, openProfile, allProfiles, searchQuery, setSearchQue
         </div>
       ) : (
         <div className="p-4 space-y-8">
-          {/* ユーザー検索 */}
           {filteredUsers.length > 0 && (
             <section>
-              <h3 className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest flex items-center gap-2"><UserIcon size={14}/> Users</h3>
+              <h3 className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest flex items-center gap-2"><UserIcon size={14}/> ユーザー</h3>
               <div className="space-y-3">
                 {filteredUsers.map(u => (
                   <div key={u.id} className="flex items-center gap-3 cursor-pointer" onClick={() => openProfile(u.id)}>
-                    <img src={u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`} className="w-10 h-10 rounded-full" />
+                    <img src={getAvatar(u.username, u.avatar_url)} className="w-10 h-10 rounded-full" />
                     <div><p className="text-sm font-black">{u.display_name}</p><p className="text-[10px] text-gray-500">@{u.username}</p></div>
                   </div>
                 ))}
@@ -853,10 +899,9 @@ function SearchView({ posts, openProfile, allProfiles, searchQuery, setSearchQue
             </section>
           )}
 
-          {/* 画像付き投稿（カテゴリ別） */}
           {filteredImages.length > 0 && (
             <section>
-              <h3 className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest flex items-center gap-2"><ImageIconLucide size={14}/> Photos</h3>
+              <h3 className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest flex items-center gap-2"><ImageIconLucide size={14}/> 写真</h3>
               <div className="grid grid-cols-3 gap-1">
                 {filteredImages.map(p => (
                   <img key={p.id} src={p.image_url} className="aspect-square object-cover rounded-lg" onClick={() => setSelectedPost(p)} />
@@ -865,10 +910,9 @@ function SearchView({ posts, openProfile, allProfiles, searchQuery, setSearchQue
             </section>
           )}
 
-          {/* 全投稿テキスト */}
           {filteredPosts.length > 0 && (
             <section>
-              <h3 className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest flex items-center gap-2"><MessageSquare size={14}/> Posts</h3>
+              <h3 className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest flex items-center gap-2"><MessageSquare size={14}/> 投稿</h3>
               <div className="space-y-4">
                 {filteredPosts.map(p => (
                   <div key={p.id} className={`p-4 rounded-2xl border ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-100'}`} onClick={() => setSelectedPost(p)}>
@@ -885,8 +929,7 @@ function SearchView({ posts, openProfile, allProfiles, searchQuery, setSearchQue
   );
 }
 
-// --- 既存のPostCard, NotificationCenter等のコンポーネントは維持 ---
-
+// --- 通知画面 ---
 function NotificationCenter({ notifications, getAvatar, openProfile, setSelectedPost, darkMode }) {
   const getMessage = (n) => {
     switch (n.type) {
@@ -901,7 +944,7 @@ function NotificationCenter({ notifications, getAvatar, openProfile, setSelected
   };
   return (
     <div className="animate-in fade-in pb-10">
-      <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 bg-inherit/90 backdrop-blur-md">Notifications</header>
+      <header className="p-4 border-b font-black text-lg text-center uppercase italic sticky top-0 z-10 bg-inherit/90 backdrop-blur-md">通知</header>
       {notifications.length === 0 ? <div className="p-20 text-center text-gray-500 font-bold text-xs">通知はありません</div> : (
         <div className="divide-y divide-gray-800/10">
           {notifications.map(n => (
@@ -919,6 +962,7 @@ function NotificationCenter({ notifications, getAvatar, openProfile, setSelected
   );
 }
 
+// --- 投稿詳細 ---
 function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLike, onShare, currentUser, darkMode, refreshPosts, sendNotification }) {
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
@@ -930,11 +974,6 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
     setLoading(true); await supabase.from('comments').insert([{ post_id: post.id, user_id: currentUser.id, content: commentText }]);
     sendNotification(post.user_id, 'comment', post.id); setCommentText(''); await fetchComments(); refreshPosts(); setLoading(false);
   }
-  async function handleDeleteComment(commentId) {
-    if (!window.confirm("コメントを削除しますか？")) return;
-    await supabase.from('comments').delete().eq('id', commentId).eq('user_id', currentUser.id);
-    setComments(prev => prev.filter(c => c.id !== commentId)); refreshPosts();
-  }
   return (
     <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center p-4">
       <div className={`w-full max-w-md rounded-[2.5rem] flex flex-col h-[85vh] overflow-hidden shadow-2xl ${darkMode ? 'bg-black border border-gray-800' : 'bg-white text-black'}`}>
@@ -943,43 +982,34 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
             <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" />
             <div className="flex flex-col"><span className="font-black text-[10px]">@{post.profiles?.username}</span><span className="text-[8px] text-gray-400 font-bold uppercase">{formatTime(post.created_at)}</span></div>
           </div>
-          <div className="flex items-center gap-2">
-            {currentUser.id === post.user_id && <button onClick={() => { onDelete(post.id); onClose(); }} className="p-2 text-gray-400 hover:text-red-500"><Trash2 size={20}/></button>}
-            <button onClick={onClose} className="p-2 text-gray-400"><X size={24}/></button>
-          </div>
+          <button onClick={onClose} className="p-2 text-gray-400"><X size={24}/></button>
         </div>
         <div className="flex-grow overflow-y-auto">
           <div className="p-5 border-b">
             {post.image_url && <img src={post.image_url} className="w-full rounded-2xl mb-4" />}
             <div className="font-medium leading-relaxed mb-4 whitespace-pre-wrap">{renderContent(post.content)}</div>
-            <div className="flex gap-4 mb-2">
-               <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'text-gray-400 hover:text-red-500'}`}>
+            <div className="flex gap-4">
+               <button onClick={() => onLike(post.id, post.is_liked)} className={`flex items-center gap-1.5 transition ${post.is_liked ? 'text-red-500 scale-110' : 'text-gray-400'}`}>
                  <Heart size={20} fill={post.is_liked ? "currentColor" : "none"} />
                  <span className="text-xs font-black">{post.like_count || ''}</span>
                </button>
-               <button onClick={() => onShare(post)} className="text-gray-400 hover:text-green-500 transition"><Share2 size={20} /></button>
+               <button onClick={() => onShare(post)} className="text-gray-400"><Share2 size={20} /></button>
             </div>
           </div>
-          <div className="p-5 space-y-4 pb-10">
+          <div className="p-5 space-y-4">
             {comments.map(c => (
-              <div key={c.id} className="flex gap-3 group">
+              <div key={c.id} className="flex gap-3">
                 <img src={getAvatar(c.profiles?.username, c.profiles?.avatar_url)} className="w-8 h-8 rounded-full object-cover" />
-                <div className="flex-grow">
-                   <div className={`p-3 rounded-2xl inline-block ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-                    <p className="font-black text-[10px] mb-1">@{c.profiles?.username}</p>
-                    <p className="text-sm font-medium">{c.content}</p>
-                   </div>
-                   <div className="flex items-center gap-2 mt-1 ml-2">
-                      <span className="text-[10px] text-gray-500">{formatTime(c.created_at)}</span>
-                      {currentUser.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} className="text-[10px] text-red-500 font-bold opacity-0 group-hover:opacity-100 transition">削除</button>}
-                   </div>
+                <div className={`p-3 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+                  <p className="font-black text-[10px] mb-1">@{c.profiles?.username}</p>
+                  <p className="text-sm font-medium">{c.content}</p>
                 </div>
               </div>
             ))}
           </div>
         </div>
         <form onSubmit={handlePostComment} className={`p-4 border-t flex gap-2 ${darkMode ? 'bg-black' : 'bg-white'}`}>
-          <input type="text" placeholder="コメントを入力..." className={`flex-grow p-4 rounded-2xl text-sm outline-none font-medium ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={commentText} onChange={(e) => setCommentText(e.target.value)} />
+          <input type="text" placeholder="コメントする..." className={`flex-grow p-4 rounded-2xl text-sm outline-none font-medium ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50'}`} value={commentText} onChange={(e) => setCommentText(e.target.value)} />
           <button type="submit" disabled={loading} className="bg-blue-600 text-white p-4 rounded-2xl"><Send size={18}/></button>
         </form>
       </div>
@@ -987,6 +1017,7 @@ function PostDetailModal({ post, onClose, getAvatar, openProfile, onDelete, onLi
   );
 }
 
+// --- ストーリー機能 (省略なし) ---
 function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
   const [textMode, setTextMode] = useState(false);
   const [text, setText] = useState('');
@@ -1019,7 +1050,7 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight; ctx.drawImage(img, 0, 0);
     if (text) {
       const baseFontSize = (img.naturalWidth / 10) * (0.5 + textStyle.size / 50); const fontSize = baseFontSize * textStyle.scale;
-      const fontName = FONT_STYLES[textStyle.fontIndex].name; const fontMap = { 'Classic': 'serif', 'Modern': 'sans-serif', 'Typewriter': 'monospace', 'Neon': 'cursive' };
+      const fontName = FONT_STYLES[textStyle.fontIndex].name; const fontMap = { 'クラシック': 'serif', 'モダン': 'sans-serif', 'タイプライター': 'monospace', 'ネオン': 'cursive' };
       ctx.font = `bold ${fontSize}px ${fontMap[fontName] || 'sans-serif'}`; ctx.fillStyle = TEXT_COLORS[textStyle.colorIndex]; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 15;
       const container = document.getElementById('story-preview-container'); const rect = container.getBoundingClientRect();
       const scaleX = canvas.width / rect.width; const scaleY = canvas.height / rect.height;
@@ -1040,7 +1071,7 @@ function StoryCreator({ file, onClose, onPublish, myProfile, getAvatar }) {
           </div>
         )}
       </div>
-      {textMode && <div className="absolute inset-0 z-30 bg-black/80 backdrop-blur-sm flex flex-col justify-center items-center animate-in fade-in"><div className="absolute top-4 right-4"><button onClick={() => setTextMode(false)} className="text-white font-bold text-lg">完了</button></div><textarea autoFocus value={text} onChange={e => setText(e.target.value)} className={`bg-transparent text-center w-full max-w-xs outline-none resize-none overflow-hidden placeholder-white/50 ${FONT_STYLES[textStyle.fontIndex].css}`} style={{ color: TEXT_COLORS[textStyle.colorIndex], fontSize: `${1.5 + textStyle.size / 20}rem` }} placeholder="タップして入力..." rows={3} /><div className="absolute bottom-0 w-full p-4 space-y-4 pb-10 bg-gradient-to-t from-black to-transparent"><div className="flex justify-center gap-4 overflow-x-auto pb-2">{FONT_STYLES.map((f, i) => (<button key={f.name} onClick={() => setTextStyle({...textStyle, fontIndex: i})} className={`px-4 py-1 rounded-full text-xs font-bold border ${textStyle.fontIndex === i ? 'bg-white text-black border-white' : 'bg-black/50 text-white border-white/30'}`}>{f.name}</button>))}</div><div className="flex justify-center gap-3 overflow-x-auto px-4">{TEXT_COLORS.map((c, i) => (<button key={c} onClick={() => setTextStyle({...textStyle, colorIndex: i})} className={`w-8 h-8 rounded-full border-2 ${textStyle.colorIndex === i ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: c }} />))}</div></div></div>}
+      {textMode && <div className="absolute inset-0 z-30 bg-black/80 backdrop-blur-sm flex flex-col justify-center items-center animate-in fade-in"><div className="absolute top-4 right-4"><button onClick={() => setTextMode(false)} className="text-white font-bold text-lg">完了</button></div><textarea autoFocus value={text} onChange={e => setText(e.target.value)} className={`bg-transparent text-center w-full max-w-xs outline-none resize-none overflow-hidden placeholder-white/50 ${FONT_STYLES[textStyle.fontIndex].css}`} style={{ color: TEXT_COLORS[textStyle.colorIndex], fontSize: `${1.5 + textStyle.size / 20}rem` }} placeholder="入力..." rows={3} /><div className="absolute bottom-0 w-full p-4 space-y-4 pb-10 bg-gradient-to-t from-black to-transparent"><div className="flex justify-center gap-4 overflow-x-auto pb-2">{FONT_STYLES.map((f, i) => (<button key={f.name} onClick={() => setTextStyle({...textStyle, fontIndex: i})} className={`px-4 py-1 rounded-full text-xs font-bold border ${textStyle.fontIndex === i ? 'bg-white text-black border-white' : 'bg-black/50 text-white border-white/30'}`}>{f.name}</button>))}</div><div className="flex justify-center gap-3 overflow-x-auto px-4">{TEXT_COLORS.map((c, i) => (<button key={c} onClick={() => setTextStyle({...textStyle, colorIndex: i})} className={`w-8 h-8 rounded-full border-2 ${textStyle.colorIndex === i ? 'border-white scale-110' : 'border-transparent'}`} style={{ backgroundColor: c }} />))}</div></div></div>}
       {!textMode && <div className="absolute bottom-0 w-full p-4 flex justify-between items-center bg-gradient-to-t from-black/90 to-transparent pb-8"><div className="flex items-center gap-2"><div className="p-[2px] rounded-full bg-gradient-to-tr from-yellow-400 to-purple-500"><img src={getAvatar(myProfile.username, myProfile.avatar_url)} className="w-8 h-8 rounded-full border-2 border-black" /></div><span className="text-white text-xs font-bold">あなたのストーリー</span></div><button onClick={handlePublish} className="bg-white text-black rounded-full p-3 px-6 font-bold flex items-center gap-2 shadow-lg active:scale-95 transition">シェア <ChevronLeft className="rotate-180" size={16} /></button></div>}
     </div>
   );
@@ -1077,13 +1108,14 @@ function StoryViewer({ stories, initialIndex, onClose, userProfile, getAvatar, c
   );
 }
 
+// --- プロフィール表示 ---
 function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, setIsEditing, editData, setEditData, handleUpdateProfile, uploading, avatarInputRef, headerInputRef, getAvatar, openProfile, toggleFollow, stats, setShowFollowList, setShowSettings, darkMode, setView, toggleLike, handleShare, setSelectedPost, onDeletePost }) {
   if (isEditing) {
     return (
       <div className="space-y-6">
-        <header className="p-4 flex justify-between items-center sticky top-0 z-10 bg-inherit/90 backdrop-blur-md border-b"><button onClick={() => setIsEditing(false)}><X size={24}/></button><h2 className="font-black uppercase tracking-widest">Edit Profile</h2><button onClick={handleUpdateProfile} disabled={uploading} className="bg-blue-600 text-white px-4 py-1.5 rounded-full text-xs font-black uppercase">{uploading ? '...' : 'Save'}</button></header>
+        <header className="p-4 flex justify-between items-center sticky top-0 z-10 bg-inherit/90 backdrop-blur-md border-b"><button onClick={() => setIsEditing(false)}><X size={24}/></button><h2 className="font-black uppercase tracking-widest">プロフィール編集</h2><button onClick={handleUpdateProfile} disabled={uploading} className="bg-blue-600 text-white px-4 py-1.5 rounded-full text-xs font-black uppercase">{uploading ? '保存中' : '保存'}</button></header>
         <div className="relative h-44 bg-gray-200"><img src={editData.header_url || 'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?w=800&q=80'} className="w-full h-full object-cover" /><div onClick={() => headerInputRef.current.click()} className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer opacity-80 hover:opacity-100 transition"><Camera className="text-white" /><input type="file" ref={headerInputRef} className="hidden" accept="image/*" /></div></div>
-        <div className="px-4 space-y-4"><div className="flex flex-col items-center gap-2 -mt-12 relative z-10"><div className="relative group" onClick={() => avatarInputRef.current.click()}><img src={getAvatar(editData.username, editData.avatar_url)} className="w-24 h-24 rounded-full object-cover border-4 border-blue-500 cursor-pointer bg-white" /><div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><Camera className="text-white"/></div><input type="file" ref={avatarInputRef} className="hidden" accept="image/*" /></div></div><div className="space-y-4 pt-4"><div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2 mb-1">Display Name</label><input className="w-full bg-transparent outline-none font-bold" value={editData.display_name} onChange={e => setEditData({...editData, display_name: e.target.value})} /></div><div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2 mb-1">Username</label><input className="w-full bg-transparent outline-none font-bold text-blue-500" value={editData.username} onChange={e => setEditData({...editData, username: e.target.value})} /></div><div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2 mb-1">Bio</label><textarea className="w-full bg-transparent outline-none font-bold h-24 resize-none" value={editData.bio} onChange={e => setEditData({...editData, bio: e.target.value})} /></div></div></div>
+        <div className="px-4 space-y-4"><div className="flex flex-col items-center gap-2 -mt-12 relative z-10"><div className="relative group" onClick={() => avatarInputRef.current.click()}><img src={getAvatar(editData.username, editData.avatar_url)} className="w-24 h-24 rounded-full object-cover border-4 border-blue-500 cursor-pointer bg-white" /><div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"><Camera className="text-white"/></div><input type="file" ref={avatarInputRef} className="hidden" accept="image/*" /></div></div><div className="space-y-4 pt-4"><div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2 mb-1">表示名</label><input className="w-full bg-transparent outline-none font-bold" value={editData.display_name} onChange={e => setEditData({...editData, display_name: e.target.value})} /></div><div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2 mb-1">ユーザーネーム</label><input className="w-full bg-transparent outline-none font-bold text-blue-500" value={editData.username} onChange={e => setEditData({...editData, username: e.target.value})} /></div><div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-2 mb-1">自己紹介</label><textarea className="w-full bg-transparent outline-none font-bold h-24 resize-none" value={editData.bio} onChange={e => setEditData({...editData, bio: e.target.value})} /></div></div></div>
       </div>
     );
   }
@@ -1095,45 +1127,42 @@ function ProfileView({ user, activeProfileId, profileInfo, posts, isEditing, set
           <img src={getAvatar(profileInfo.username, profileInfo.avatar_url)} className={`w-24 h-24 rounded-full border-4 shadow-xl object-cover ${darkMode ? 'border-black bg-black' : 'border-white bg-white'}`} />
           {isOnline(profileInfo.last_seen_at) && <div className="absolute bottom-1 right-1 w-5 h-5 bg-green-500 border-4 border-black rounded-full"></div>}
         </div>
-        <div className="flex gap-2">{user?.id === activeProfileId ? (<button onClick={() => setIsEditing(true)} className={`border rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>Edit Profile</button>) : (<button onClick={toggleFollow} className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter transition ${stats.isFollowing ? (darkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-black') : 'bg-blue-600 text-white'}`}>{stats.isFollowing ? <><UserMinus size={14}/> Unfollow</> : <><UserPlus size={14}/> Follow</>}</button>)}</div></div><div><h2 className="text-2xl font-black tracking-tighter">{profileInfo.display_name}</h2><p className="text-gray-400 text-sm font-bold">@{profileInfo.username}</p><p className="mt-3 text-[15px] font-medium leading-relaxed">{profileInfo.bio || 'GridStream member.'}</p><div className="flex gap-4 mt-4"><button onClick={() => setShowFollowList('following')} className="text-sm"><span className="font-black">{stats.following}</span> <span className="text-gray-400">Following</span></button><button onClick={() => setShowFollowList('followers')} className="text-sm"><span className="font-black">{stats.followers}</span> <span className="text-gray-400">Followers</span></button></div></div></div>
+        <div className="flex gap-2">{user?.id === activeProfileId ? (<button onClick={() => setIsEditing(true)} className={`border rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>プロフィールを編集</button>) : (<button onClick={toggleFollow} className={`flex items-center gap-1.5 rounded-full px-5 py-1.5 text-xs font-black uppercase tracking-tighter transition ${stats.isFollowing ? (darkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-black') : 'bg-blue-600 text-white'}`}>{stats.isFollowing ? <><UserMinus size={14}/> フォロー解除</> : <><UserPlus size={14}/> フォローする</>}</button>)}</div></div><div><h2 className="text-2xl font-black tracking-tighter">{profileInfo.display_name}</h2><p className="text-gray-400 text-sm font-bold">@{profileInfo.username}</p><p className="mt-3 text-[15px] font-medium leading-relaxed">{profileInfo.bio || 'GridStream member.'}</p><div className="flex gap-4 mt-4"><button onClick={() => setShowFollowList('following')} className="text-sm"><span className="font-black">{stats.following}</span> <span className="text-gray-400">フォロー中</span></button><button onClick={() => setShowFollowList('followers')} className="text-sm"><span className="font-black">{stats.followers}</span> <span className="text-gray-400">フォロワー</span></button></div></div></div>
       <div className={`divide-y mt-8 border-t ${darkMode ? 'border-gray-800 divide-gray-800' : 'border-gray-100 divide-gray-100'}`}>{posts.filter(p => p.user_id === activeProfileId).map(post => (<PostCard key={post.id} post={post} openProfile={openProfile} getAvatar={getAvatar} onLike={toggleLike} onShare={handleShare} currentUser={user} darkMode={darkMode} onOpenDetail={() => setSelectedPost(post)} onDelete={onDeletePost} />))}</div>
     </>
   );
 }
 
+// --- 全般設定画面 ---
 function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
   const [newEmail, setNewEmail] = useState(user?.email || ''); const [newPassword, setNewPassword] = useState(''); const [updating, setUpdating] = useState(false);
   const handleLogout = () => { supabase.auth.signOut(); onClose(); };
   
   const handleDeleteAccount = async () => {
     if(!window.confirm("【重要】アカウントを完全に削除しますか？この操作は取り消せません。")) return;
-    const { error } = await supabase.rpc('delete_user_data'); // RPCまたは個別に削除
-    if(error) {
-      // 簡易的な個別削除
-      await supabase.from('profiles').delete().eq('id', user.id);
-      await supabase.auth.signOut();
-      alert("アカウントに関連するデータを削除しました。");
-      window.location.reload();
-    }
+    await supabase.from('profiles').delete().eq('id', user.id);
+    await supabase.auth.signOut();
+    alert("アカウントに関連するデータを削除しました。");
+    window.location.reload();
   };
 
   const handleUpdateAuth = async () => { setUpdating(true); const updates = {}; if (newEmail !== user.email) updates.email = newEmail; if (newPassword) updates.password = newPassword; const { error } = await supabase.auth.updateUser(updates); if (error) alert(error.message); else alert('認証情報を更新しました。'); setUpdating(false); };
   
   return (
     <div className={`fixed inset-0 z-[110] animate-in slide-in-from-bottom duration-300 overflow-y-auto pb-10 ${darkMode ? 'bg-black text-white' : 'bg-white text-black'}`}>
-      <header className="p-4 border-b flex items-center gap-4 sticky top-0 z-10 bg-inherit"><ChevronLeft onClick={onClose} className="cursor-pointer" /><h2 className="font-black uppercase tracking-widest">Settings</h2></header>
+      <header className="p-4 border-b flex items-center gap-4 sticky top-0 z-10 bg-inherit"><ChevronLeft onClick={onClose} className="cursor-pointer" /><h2 className="font-black uppercase tracking-widest">設定</h2></header>
       <div className="p-6 space-y-8">
-        <section><h3 className="text-gray-400 text-[10px] font-black uppercase mb-4 tracking-widest">Account</h3>
+        <section><h3 className="text-gray-400 text-[10px] font-black uppercase mb-4 tracking-widest">アカウント</h3>
           <div className="space-y-4">
-            <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] text-gray-400 uppercase block mb-1">Email</label><input type="email" className="w-full bg-transparent outline-none font-bold" value={newEmail} onChange={e => setNewEmail(e.target.value)} /></div>
-            <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] text-gray-400 uppercase block mb-1">New Password</label><input type="password" placeholder="••••••••" className="w-full bg-transparent outline-none font-bold" value={newPassword} onChange={e => setNewPassword(e.target.value)} /></div>
-            <button onClick={handleUpdateAuth} disabled={updating} className="w-full py-3 bg-blue-600 rounded-xl font-bold text-xs uppercase text-white">{updating ? 'Updating...' : 'Update Auth Info'}</button>
+            <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] text-gray-400 uppercase block mb-1">メールアドレス</label><input type="email" className="w-full bg-transparent outline-none font-bold" value={newEmail} onChange={e => setNewEmail(e.target.value)} /></div>
+            <div className={`p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><label className="text-[10px] text-gray-400 uppercase block mb-1">新しいパスワード</label><input type="password" placeholder="••••••••" className="w-full bg-transparent outline-none font-bold" value={newPassword} onChange={e => setNewPassword(e.target.value)} /></div>
+            <button onClick={handleUpdateAuth} disabled={updating} className="w-full py-3 bg-blue-600 rounded-xl font-bold text-xs uppercase text-white">{updating ? '更新中' : '認証情報を更新'}</button>
           </div>
         </section>
-        <section><h3 className="text-gray-400 text-[10px] font-black uppercase mb-4 tracking-widest">Appearance</h3><button onClick={() => setDarkMode(!darkMode)} className={`w-full flex justify-between items-center p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><span className="text-sm font-bold">Dark Mode</span><div className={`w-10 h-6 rounded-full relative transition-colors ${darkMode ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${darkMode ? 'right-1' : 'left-1'}`} /></div></button></section>
+        <section><h3 className="text-gray-400 text-[10px] font-black uppercase mb-4 tracking-widest">外観</h3><button onClick={() => setDarkMode(!darkMode)} className={`w-full flex justify-between items-center p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}><span className="text-sm font-bold">ダークモード</span><div className={`w-10 h-6 rounded-full relative transition-colors ${darkMode ? 'bg-blue-600' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${darkMode ? 'right-1' : 'left-1'}`} /></div></button></section>
         <section className="pt-4 border-t border-gray-100/10 space-y-3">
-          <button onClick={handleLogout} className="w-full p-4 rounded-2xl bg-gray-500/10 text-gray-500 font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2"><LogOut size={16}/> Logout</button>
-          <button onClick={handleDeleteAccount} className="w-full p-4 rounded-2xl bg-red-500/10 text-red-500 font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2"><Trash2 size={16}/> Delete Account</button>
+          <button onClick={handleLogout} className="w-full p-4 rounded-2xl bg-gray-500/10 text-gray-500 font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2"><LogOut size={16}/> ログアウト</button>
+          <button onClick={handleDeleteAccount} className="w-full p-4 rounded-2xl bg-red-500/10 text-red-500 font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2"><Trash2 size={16}/> アカウント削除</button>
         </section>
       </div>
     </div>
@@ -1143,7 +1172,7 @@ function SettingsScreen({ onClose, user, myProfile, darkMode, setDarkMode }) {
 function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, darkMode, onOpenDetail, onDelete }) {
   return (
     <article className={`p-4 flex gap-3 transition border-b last:border-0 ${darkMode ? 'border-gray-800' : 'border-gray-50'}`}>
-      <div className="relative">
+      <div className="relative shrink-0">
         <img src={getAvatar(post.profiles?.username, post.profiles?.avatar_url)} className="w-11 h-11 rounded-full cursor-pointer object-cover" onClick={() => openProfile(post.profiles?.id)} />
         {isOnline(post.profiles?.last_seen_at) && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-black rounded-full"></div>}
       </div>
@@ -1163,15 +1192,16 @@ function PostCard({ post, openProfile, getAvatar, onLike, onShare, currentUser, 
 
 function FollowListModal({ type, userId, onClose, openProfile, getAvatar, darkMode }) {
   const [list, setList] = useState([]);
+  const titles = { followers: 'フォロワー', following: 'フォロー中' };
   useEffect(() => { async function fetchList() { const sourceCol = type === 'followers' ? 'following_id' : 'follower_id'; const targetCol = type === 'followers' ? 'follower_id' : 'following_id'; const { data: followData } = await supabase.from('follows').select(targetCol).eq(sourceCol, userId); if (followData?.length > 0) { const ids = followData.map(f => f[targetCol]); const { data: profiles } = await supabase.from('profiles').select('*').in('id', ids); if (profiles) setList(profiles); } } fetchList(); }, [type, userId]);
   return (
-    <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end justify-center"><div className={`w-full max-w-md rounded-t-[2.5rem] max-h-[80vh] flex flex-col ${darkMode ? 'bg-black text-white' : 'bg-white'}`}><div className="p-6 border-b flex justify-between items-center"><h3 className="font-black uppercase tracking-widest">{type}</h3><X onClick={onClose} className="cursor-pointer" /></div><div className="overflow-y-auto p-4 space-y-2">{list.map(u => (<div key={u.id} className="flex items-center gap-4 cursor-pointer p-3 rounded-2xl hover:bg-gray-50/10" onClick={() => { onClose(); openProfile(u.id); }}><img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover" /><div className="flex-grow"><p className="font-black text-sm">{u.display_name}</p><p className="text-gray-400 text-xs font-bold">@{u.username}</p></div></div>))}</div></div></div>
+    <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end justify-center"><div className={`w-full max-w-md rounded-t-[2.5rem] max-h-[80vh] flex flex-col ${darkMode ? 'bg-black text-white' : 'bg-white'}`}><div className="p-6 border-b flex justify-between items-center"><h3 className="font-black uppercase tracking-widest">{titles[type]}</h3><X onClick={onClose} className="cursor-pointer" /></div><div className="overflow-y-auto p-4 space-y-2">{list.map(u => (<div key={u.id} className="flex items-center gap-4 cursor-pointer p-3 rounded-2xl hover:bg-gray-50/10" onClick={() => { onClose(); openProfile(u.id); }}><img src={getAvatar(u.username, u.avatar_url)} className="w-12 h-12 rounded-full object-cover" /><div className="flex-grow"><p className="font-black text-sm">{u.display_name}</p><p className="text-gray-400 text-xs font-bold">@{u.username}</p></div></div>))}</div></div></div>
   );
 }
 
 function AuthScreen({ fetchData }) {
   const [isLogin, setIsLogin] = useState(true); const [step, setStep] = useState(1); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [username, setUsername] = useState(''); const [displayName, setDisplayName] = useState(''); const [loading, setLoading] = useState(false);
-  async function handleAuth(e) { if (e) e.preventDefault(); setLoading(true); try { if (isLogin) { const { error } = await supabase.auth.signInWithPassword({ email, password }); if (error) throw error; } else { const { data, error } = await supabase.auth.signUp({ email, password }); if (error) throw error; if (data?.user) { const { error: profileError } = await supabase.from('profiles').upsert([{ id: data.user.id, username: username.toLowerCase(), display_name: displayName }]); if (profileError) throw profileError; } } fetchData(); } catch (err) { alert(err.message); } finally { setLoading(false); } }
-  if (isLogin) return (<div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black"><script src="https://cdn.tailwindcss.com"></script><div className="w-20 h-20 bg-gradient-to-tr from-blue-700 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-pulse"><Zap size={40} color="white" fill="white" /></div><h1 className="text-4xl font-black mb-10 text-blue-700 italic uppercase">GridStream</h1><form onSubmit={handleAuth} className="w-full max-w-xs space-y-4"><input type="email" placeholder="EMAIL" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={email} onChange={(e) => setEmail(e.target.value)} required /><input type="password" placeholder="PASSWORD" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={password} onChange={(e) => setPassword(e.target.value)} required /><button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">{loading ? "..." : "Login"}</button></form><button onClick={() => { setIsLogin(false); setStep(1); }} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">Create Account</button></div>);
-  return (<div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black"><script src="https://cdn.tailwindcss.com"></script><div className="w-full max-w-xs flex items-center mb-8"><button onClick={() => step > 1 ? setStep(step - 1) : setIsLogin(true)} className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition"><ChevronLeft size={24} /></button><div className="flex-grow text-center mr-6"><span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Step {step} of 4</span></div></div><h2 className="text-2xl font-black mb-2 italic uppercase">JOIN GRIDSTREAM</h2><form onSubmit={(e) => { e.preventDefault(); if (step < 4) setStep(step + 1); else handleAuth(); }} className="w-full max-w-xs space-y-6">{step === 1 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Email Address</label><input type="email" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>)}{step === 2 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Create Password</label><input type="password" placeholder="••••••••" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} /></div>)}{step === 3 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Username</label><input type="text" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={username} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} required minLength={4} /></div>)}{step === 4 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">Display Name</label><input type="text" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required /></div>)}<button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">{loading ? "..." : (step === 4 ? "Complete Sign Up" : "Next")}</button></form></div>);
-      }
+  async function handleAuth(e) { if (e) e.preventDefault(); setLoading(true); try { if (isLogin) { const { error } = await supabase.auth.signInWithPassword({ email, password }); if (error) throw error; } else { const { data, error } = await supabase.auth.signUp({ email, password }); if (error) throw error; if (data?.user) { await supabase.from('profiles').upsert([{ id: data.user.id, username: username.toLowerCase(), display_name: displayName }]); } } fetchData(); } catch (err) { alert(err.message); } finally { setLoading(false); } }
+  if (isLogin) return (<div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black"><div className="w-20 h-20 bg-gradient-to-tr from-blue-700 to-cyan-500 rounded-[2rem] flex items-center justify-center shadow-2xl mb-6 rotate-6 animate-pulse"><Zap size={40} color="white" fill="white" /></div><h1 className="text-4xl font-black mb-10 text-blue-700 italic uppercase">GridStream</h1><form onSubmit={handleAuth} className="w-full max-w-xs space-y-4"><input type="email" placeholder="メールアドレス" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={email} onChange={(e) => setEmail(e.target.value)} required /><input type="password" placeholder="パスワード" className="w-full bg-gray-50 p-4 rounded-2xl outline-none font-bold" value={password} onChange={(e) => setPassword(e.target.value)} required /><button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">{loading ? "ログイン中" : "ログイン"}</button></form><button onClick={() => { setIsLogin(false); setStep(1); }} className="mt-8 text-xs font-black text-gray-400 uppercase tracking-widest">アカウント作成</button></div>);
+  return (<div className="flex flex-col items-center justify-center min-h-screen p-8 bg-white text-black"><div className="w-full max-w-xs flex items-center mb-8"><button onClick={() => step > 1 ? setStep(step - 1) : setIsLogin(true)} className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition"><ChevronLeft size={24} /></button><div className="flex-grow text-center mr-6"><span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">ステップ {step} / 4</span></div></div><h2 className="text-2xl font-black mb-2 italic uppercase">参加する</h2><form onSubmit={(e) => { e.preventDefault(); if (step < 4) setStep(step + 1); else handleAuth(); }} className="w-full max-w-xs space-y-6">{step === 1 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">メールアドレス</label><input type="email" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>)}{step === 2 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">パスワード設定</label><input type="password" placeholder="••••••••" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} /></div>)}{step === 3 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">ユーザーネーム</label><input type="text" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={username} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} required minLength={4} /></div>)}{step === 4 && (<div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-1">表示名</label><input type="text" className="w-full bg-gray-100 p-4 rounded-2xl outline-none font-bold" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required /></div>)}<button type="submit" disabled={loading} className="w-full bg-blue-700 text-white font-black py-5 rounded-2xl uppercase tracking-widest text-xs">{loading ? "作成中" : (step === 4 ? "登録を完了する" : "次へ")}</button></form></div>);
+                                               }
